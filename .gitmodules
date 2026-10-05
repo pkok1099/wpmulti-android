@@ -1,0 +1,3 @@
+[submodule "wpmulti"]
+	path = wpmulti
+	url = https://github.com/pkok1099/wpmulti.git

@@ -1,0 +1,7 @@
+*.aar
+*.jar
+build/
+.gradle/
+local.properties
+app/src/main/assets/confs/*.conf
+!app/src/main/assets/confs/README.md

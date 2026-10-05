@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WpmultiTest" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:buttonStyle">@style/Btn.Round</item>
+    </style>
+    <style name="Btn.Round" parent="android:Widget.Material.Button">
+        <item name="android:background">@drawable/btn_round</item>
+        <item name="android:textColor">@color/btn_text</item>
+        <item name="android:minHeight">40dp</item>
+    </style>
+</resources>
