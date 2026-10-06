@@ -1,0 +1,84 @@
+From c1fa2d5ca3c62cdb3b6a36054d218335de1c9472 Mon Sep 17 00:00:00 2001
+From: Z User <z@container>
+Date: Tue, 6 Oct 2026 20:12:26 +0000
+Subject: [PATCH] perf(ram): buffer go-socks5 256KB -> 32KB + binding
+ FreeOSMemory
+
+TAHAP 1: ukuran buffer bufferpool go-socks5 diturunkan 256 KB -> 32 KB
+(const socksBufSize). io.CopyBuffer (handle.go:389) memakai buffer dari
+pool yang sama (buf[:cap(buf)]) sehingga ukuran copy otomatis konsisten.
+32 KB = default bawaan go-socks5 (server.go:74). heap.prof: NewPool.func2
+inuse 46,38 MB (~185 x 256 KB) -> ~5,9 MB (hemat ~40 MB). WaitPool
+wireguard dan logika WireGuard TIDAK disentuh.
+
+TAHAP 3 (binding): tambah mobile.FreeOSMemory() -> runtime/debug.
+FreeOSMemory (GC + scavenge ke OS). Dipanggil GoEngineService periodik
+hanya saat engine idle (TX/RX 0 selama 3 interval 60 dtk). GOGC tidak
+diubah.
+---
+ mobile/mobile.go | 12 +++++++++++-
+ multi.go         | 11 ++++++++++-
+ 2 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/mobile/mobile.go b/mobile/mobile.go
+index 0394f06..a3bb915 100644
+--- a/mobile/mobile.go
++++ b/mobile/mobile.go
+@@ -11,10 +11,11 @@
+ package mobile
+ 
+ import (
+-	"time"
+ 	"net"
+ 	"os"
++	"runtime/debug"
+ 	"sync"
++	"time"
+ 
+ 	wireproxy "github.com/pkok1099/wpmulti"
+ 	"golang.zx2c4.com/wireguard/device"
+@@ -177,3 +178,12 @@ func SessionCount() int {
+ 	}
+ 	return mt.Count()
+ }
++
++// FreeOSMemory memaksa GC penuh lalu mengembalikan memori idle ke OS
++// (runtime/debug.FreeOSMemory: GC + scavenge seketika, bukan menunggu
++// scavenger latar). Dipanggil GoEngineService secara periodik HANYA saat
++// engine idle (TX/RX 0 selama beberapa interval berturut-turut) — jangan
++// dipanggil saat trafik aktif.
++func FreeOSMemory() {
++	debug.FreeOSMemory()
++}
+diff --git a/multi.go b/multi.go
+index 7c32473..80afd86 100644
+--- a/multi.go
++++ b/multi.go
+@@ -31,6 +31,15 @@ import (
+ 	"golang.zx2c4.com/wireguard/tun/netstack"
+ )
+ 
++// socksBufSize - ukuran satu buffer relay SOCKS5 (go-socks5 bufferpool).
++// Buffer ini dipakai io.CopyBuffer di handleConnect (handle.go:389:
++// io.CopyBuffer(dst, src, buf[:cap(buf))]) sehingga ukuran copy SELALU
++// sama dengan ukuran pool - satu sumber konstanta ini.
++// 32 KB = default bawaan go-socks5 (server.go:74 NewPool(32*1024)).
++// Sebelumnya 256 KB: heap.prof mencatat 46,38 MB inuse untuk ~185 buffer
++// (185 x 256 KB); dengan 32 KB turun menjadi ~5,9 MB (hemat ~40 MB).
++const socksBufSize = 32 * 1024
++
+ // endpointRe menemukan baris "Endpoint = host:port" di config WireGuard.
+ var endpointRe = regexp.MustCompile(`(?im)^\s*endpoint\s*=\s*([^\s:;\]]+)(:\d+)?\s*$`)
+ 
+@@ -339,7 +348,7 @@ func (m *MultiTun) Resolve(ctx context.Context, name string) (context.Context, n
+ func (m *MultiTun) newSocks5Server() *socks5.Server {
+ 	options := []socks5.Option{
+ 		socks5.WithAuthMethods([]socks5.Authenticator{socks5.NoAuthAuthenticator{}}),
+-		socks5.WithBufferPool(bufferpool.NewPool(256 * 1024)),
++		socks5.WithBufferPool(bufferpool.NewPool(socksBufSize)),
+ 		socks5.WithDial(m.DialContext),
+ 		socks5.WithResolver(m),
+ 	}
+-- 
+2.47.3
+

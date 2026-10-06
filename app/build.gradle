@@ -1,0 +1,74 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.wpmulti.test'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.wpmulti.test'
+        minSdk 34
+        targetSdk 36
+        versionCode 6
+        versionName '1.5'
+    }
+
+    buildFeatures {
+        // AGP 8+: BuildConfig tidak dibuat default; dipakai untuk
+        // VERSION_NAME/VERSION_CODE di halaman Setting.
+        buildConfig true
+        // TAHAP 1: AIDL IEngineControl untuk kontrol engine lintas proses
+        // (proses utama <-> :goengine).
+        aidl true
+    }
+
+    buildTypes {
+        release {
+            // R8 + shrinkResources: dex + resource dikecilkan. Dulu
+            // dinonaktifkan dengan alasan "98% APK = native .so", tetapi
+            // .so kini DIKOMPRESI di APK (useLegacyPackaging) sehingga
+            // porsi dex/resource relatif membesar dan R8 kembali menguntungkan.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
+            // Signing dari environment (tidak ada lagi password plaintext
+            // di VCS). Jika env tidak diset, build tetap jalan tanpa
+            // signing (unsigned) - untuk rilis, set env-nya:
+            //   WPMULTI_STORE=/path/keystore WPMULTI_STORE_PASS=... \
+            //   WPMULTI_KEY_ALIAS=wpmulti WPMULTI_KEY_PASS=... gradle assembleRelease
+            def storePath = System.getenv("WPMULTI_STORE")
+            def storePass = System.getenv("WPMULTI_STORE_PASS")
+            def keyAlias_ = System.getenv("WPMULTI_KEY_ALIAS")
+            def keyPass = System.getenv("WPMULTI_KEY_PASS")
+            if (storePath != null && storePass != null && keyAlias_ != null && keyPass != null) {
+                signingConfig signingConfigs.create("releaseEnv") {
+                    storeFile file(storePath)
+                    storePassword storePass
+                    keyAlias keyAlias_
+                    keyPassword keyPass
+                }
+                signingConfig signingConfigs.releaseEnv
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packagingOptions {
+        jniLibs {
+            // Kompres .so di dalam APK (default AGP menyimpan uncompressed
+            // utk mmap). .so 8.8MB -> ~3.5MB terkompresi. Cost: ekstraksi ke
+            // disk saat instalasi; runtime tetap demand-paged dari disk.
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    implementation files('libs/wpmulti.aar')
+    implementation 'tech.kwik:kwik:0.8.13'
+    debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
+}

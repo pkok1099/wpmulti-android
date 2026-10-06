@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingTop="4dp" android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/proxyName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="SOCKS5" />
+
+    <TextView
+        android:id="@+id/proxyAddr"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:text="127.0.0.1:1080" />
+
+    <TextView
+        android:id="@+id/proxyStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingLeft="8dp" android:paddingRight="8dp"
+        android:text="-" />
+
+    <Button
+        android:id="@+id/proxyCopy"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SALIN" />
+
+</LinearLayout>

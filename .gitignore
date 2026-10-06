@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# IDE
+.idea/
+*.iml
+
+# Local config
+local.properties
+captures/
+
+# Native build artifacts
+.cxx/
+
+# CATATAN: app/libs/wpmulti.aar SENGAJA TER-TRACK - AAR prebuilt adalah
+# satu-satunya sumber engine Go di repo ini (dibangun dari wpmulti
+# branch ram/bufferpool-32k; versi ter-patch buffer 32KB).

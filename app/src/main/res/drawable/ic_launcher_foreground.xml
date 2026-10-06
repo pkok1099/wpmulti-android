@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 3 jalur paralel = multi-session; panah = aliran trafik -->
+    <path
+        android:strokeWidth="10"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:pathData="M36,34 h36" />
+    <path
+        android:strokeWidth="10"
+        android:strokeColor="#69F0AE"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M28,54 h52 M70,46 l10,8 l-10,8" />
+    <path
+        android:strokeWidth="10"
+        android:strokeColor="#40C4FF"
+        android:strokeLineCap="round"
+        android:pathData="M36,74 h36" />
+</vector>
