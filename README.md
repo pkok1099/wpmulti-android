@@ -117,6 +117,7 @@ Keystore release dibaca dari env `WPMULTI_STORE_*` (tidak ada rahasia di repo).
 | 1.5 | Reduksi RAM heap.prof: buffer SOCKS 32KB + idle-GC `FreeOSMemory` |
 | 1.6 | Pass pra-M3E: token shape sudut 6/10/14dp (tidak terlalu round), tombol 12→10dp, token warna scrim/sidebar |
 | 1.7 | Material 3 Expressive (material 1.14.0): tema Light/Dark M3E, tombol tonal MaterialButton, sudut dijaga token 6/10/14dp (anti-default-round M3E), AppCompatActivity + tema translucent M3; AGP 8.13.2 + gradle.properties useAndroidX |
+| 1.8 | Sharpening: sudut 6/10/14 -> 4/6/8dp (kotak, tegas), emoji teks diganti vector Material Symbols (menu/play/stop/dot status), MaterialButton icon di btnEngine/vpnToggleBtn/btnMenu, ripple sidebar |
 
 ## Kredit & lisensi
 

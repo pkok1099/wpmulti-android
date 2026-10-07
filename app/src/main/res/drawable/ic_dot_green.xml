@@ -1,0 +1,14 @@
+<!-- Dot status (pengganti emoji &#128308;/&#128993;/&#128994; pada
+     statusBar). Warna = konsisten dgn statusBar.setTextColor di
+     MainActivity. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="10dp"
+    android:height="10dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <group android:translateY="960">
+        <path
+            android:fillColor="#69F0AE"
+            android:pathData="M480-320q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47Z" />
+    </group>
+</vector>

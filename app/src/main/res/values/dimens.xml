@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Token sudut M3 Expressive: skala TEGAS (tidak terlalu round).
-         Dipakai Shape.Wpmulti.* di themes.xml (lapis 1) dan token
-         shapeCornerSize* tema (lapis 2). Mengubah nilai di sini otomatis
-         mengubah sudut seluruh widget M3. -->
-    <dimen name="corner_small">6dp</dimen>
-    <dimen name="corner_medium">10dp</dimen>
-    <dimen name="corner_large">14dp</dimen>
+    <!-- Token sudut M3 Expressive: skala KOTAK (sudut round kecil, tegas
+         & elegan). v1.7 = 6/10/14 masih terlalu round menurut user ->
+         v1.8 dipangkas ke 4/6/8. Dipakai Shape.Wpmulti.* (lapis 1) dan
+         token shapeCornerSize* tema (lapis 2). -->
+    <dimen name="corner_small">4dp</dimen>
+    <dimen name="corner_medium">6dp</dimen>
+    <dimen name="corner_large">8dp</dimen>
 </resources>

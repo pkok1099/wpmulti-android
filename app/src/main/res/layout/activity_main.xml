@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -18,10 +19,11 @@
             android:gravity="center_vertical"
             android:padding="8dp">
             <Button android:id="@+id/btnMenu"
+                style="@style/Widget.Material3.Button.IconButton"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:text="&#9776;"
-                android:textSize="20sp" />
+                app:icon="@drawable/ic_menu"
+                app:iconTint="?attr/colorOnSurfaceVariant" />
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -42,7 +44,9 @@
         <TextView android:id="@+id/statusBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="&#128308; BERHENTI"
+            android:text="BERHENTI"
+            android:drawableStart="@drawable/ic_dot_red"
+            android:drawablePadding="8dp"
             android:textSize="16sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -142,6 +146,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:text="CONNECT VPN"
+                        app:icon="@drawable/ic_play"
+                        app:iconGravity="textStart"
+                        app:iconPadding="10dp"
+                        app:iconTint="?attr/colorPrimary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
                     <Button android:id="@+id/pingTestBtn"
@@ -466,9 +474,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
-            android:text="&#9654; START"
+            android:text="START"
             android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            app:icon="@drawable/ic_play"
+            app:iconGravity="textStart"
+            app:iconPadding="10dp"
+            app:iconTint="?attr/colorPrimary" />
 
     </LinearLayout>
 
@@ -503,6 +515,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Dashboard"
+            android:background="?android:attr/selectableItemBackground"
             android:drawableStart="@drawable/ic_dashboard"
             android:drawablePadding="12dp"
             android:gravity="center_vertical"
@@ -513,6 +526,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Setting"
+            android:background="?android:attr/selectableItemBackground"
             android:drawableStart="@drawable/ic_settings"
             android:drawablePadding="12dp"
             android:gravity="center_vertical"
@@ -523,6 +537,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Log"
+            android:background="?android:attr/selectableItemBackground"
             android:drawableStart="@drawable/ic_log"
             android:drawablePadding="12dp"
             android:gravity="center_vertical"

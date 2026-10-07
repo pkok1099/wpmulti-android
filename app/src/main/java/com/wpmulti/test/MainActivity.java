@@ -1,6 +1,7 @@
 package com.wpmulti.test;
 
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.material.button.MaterialButton;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -90,7 +91,7 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView vpnStatusView, vpnStatsView;
     private TextView proxyStatusView; // label "Proxy SOCKS5/HTTP: aktif/tidak aktif"
-    private Button vpnToggleBtn;
+    private MaterialButton vpnToggleBtn;
     private android.widget.Spinner vpnDnsMode;
     private EditText vpnDnsServer;
     private android.widget.CheckBox vpnAutoReconnect;
@@ -211,34 +212,46 @@ public class MainActivity extends AppCompatActivity {
         // state lain (sukses/gagal/timeout/stop) otomatis membatalkannya.
         if (st != ST_STARTING) stopStartSync();
         ui.post(() -> {
-            Button btn = findViewById(R.id.btnEngine);
+            MaterialButton btn = findViewById(R.id.btnEngine);
             switch (st) {
                 case ST_IDLE:
-                    btn.setText("\u25B6 START");
+                    btn.setText("START");
+                    btn.setIconResource(R.drawable.ic_play);
                     btn.setEnabled(true);
-                    statusBar.setText("\uD83D\uDD34 BERHENTI");
+                    statusBar.setText("BERHENTI");
+                    statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                            R.drawable.ic_dot_red, 0, 0, 0);
                     statusBar.setTextColor(0xFFFF5252);
                     break;
                 case ST_STARTING:
-                    btn.setText("\u23F3 MEMULAI...");
+                    btn.setText("MEMULAI...");
+                    btn.setIconResource(0);
                     btn.setEnabled(false);
-                    statusBar.setText("\uD83D\uDFE1 MEMULAI...");
+                    statusBar.setText("MEMULAI...");
+                    statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                            R.drawable.ic_dot_amber, 0, 0, 0);
                     statusBar.setTextColor(0xFFFFD740);
                     break;
                 case ST_RUNNING:
-                    btn.setText("\u25A0 STOP");
+                    btn.setText("STOP");
+                    btn.setIconResource(R.drawable.ic_stop);
                     btn.setEnabled(true);
                     // FIX label kontradiktif: jumlah sesi dari snapshot
                     // EngineClient (GET_STATUS), bukan Mobile.sessionCount()
                     // (runtime Go tidak ada lagi di proses utama).
-                    statusBar.setText("\uD83D\uDFE2 BERJALAN \u2014 "
+                    statusBar.setText("BERJALAN \u2014 "
                             + EngineClient.get().snapshot().sessions + " sesi");
+                    statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                            R.drawable.ic_dot_green, 0, 0, 0);
                     statusBar.setTextColor(0xFF69F0AE);
                     break;
                 case ST_STOPPING:
-                    btn.setText("\u23F3 MENGHENTIKAN...");
+                    btn.setText("MENGHENTIKAN...");
+                    btn.setIconResource(0);
                     btn.setEnabled(false);
-                    statusBar.setText("\uD83D\uDFE1 MENGHENTIKAN...");
+                    statusBar.setText("MENGHENTIKAN...");
+                    statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                            R.drawable.ic_dot_amber, 0, 0, 0);
                     statusBar.setTextColor(0xFFFFD740);
                     break;
             }
@@ -328,8 +341,10 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 vpnStatsView.setText("");
             }
-            vpnToggleBtn.setText(vpnOn ? "\u25A0 DISCONNECT VPN"
-                    : "\u25B6 CONNECT VPN");
+            vpnToggleBtn.setText(vpnOn ? "DISCONNECT VPN"
+                    : "CONNECT VPN");
+            vpnToggleBtn.setIconResource(vpnOn
+                    ? R.drawable.ic_stop : R.drawable.ic_play);
             // boleh connect hanya saat engine running; disconnect selalu boleh
             vpnToggleBtn.setEnabled(vpnOn || engOn);
             vpnToggleBtn.setAlpha((vpnOn || engOn) ? 1f : 0.4f);
@@ -1487,7 +1502,7 @@ public class MainActivity extends AppCompatActivity {
         trafficGraph = findViewById(R.id.trafficGraph);
         vpnStatusView = findViewById(R.id.vpnStatus);
         vpnStatsView = findViewById(R.id.vpnStats);
-        vpnToggleBtn = findViewById(R.id.vpnToggleBtn);
+        vpnToggleBtn = (MaterialButton) findViewById(R.id.vpnToggleBtn);
         vpnDnsMode = findViewById(R.id.vpnDnsMode);
         vpnDnsServer = findViewById(R.id.vpnDnsServer);
         SharedPreferences vprefs = getSharedPreferences("vpn", MODE_PRIVATE);
