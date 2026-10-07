@@ -34,9 +34,9 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|density"
             android:enableOnBackInvokedCallback="false">
-            <!-- enableOnBackInvokedCallback=false: targetSdk 36 menyalakan
-                 predictive back; tanpa opt-out ini onBackPressed() tidak
-                 akan pernah dipanggil. -->
+            <!-- enableOnBackInvokedCallback="false" dipertahankan agar
+                 perilaku tombol back deterministik: default back = finish
+                 activity (engine/VPN berjalan di service terpisah). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
