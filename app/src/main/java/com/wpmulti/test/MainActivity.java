@@ -87,6 +87,14 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView headerStats;
     private TextView statusBar;
+    // Glitchcore cy3: HUD notifikasi in-app (pengganti Toast sistem yang
+    // tampil sbg box abu-abu gelap di atas pill nav).
+    private TextView hudToast;
+    private final Runnable hudHide = () -> {
+        if (hudToast != null) {
+            hudToast.setVisibility(android.view.View.GONE);
+        }
+    };
     private TextView logView;
     private TextView totalView;
     private TextView verifyView;
@@ -253,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("BERHENTI");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_red, 0, 0, 0);
-                    statusBar.setTextColor(getColor(R.color.status_red));
+                    glitchFlash(statusBar, getColor(R.color.status_red));
                     break;
                 case ST_STARTING:
                     btn.setText("MEMULAI...");
@@ -262,7 +270,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MEMULAI...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(getColor(R.color.status_amber));
+                    glitchFlash(statusBar, getColor(R.color.status_amber));
                     break;
                 case ST_RUNNING:
                     btn.setText("STOP");
@@ -275,7 +283,7 @@ public class MainActivity extends AppCompatActivity {
                             + EngineClient.get().snapshot().sessions + " sesi");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_green, 0, 0, 0);
-                    statusBar.setTextColor(getColor(R.color.status_green));
+                    glitchFlash(statusBar, getColor(R.color.status_green));
                     break;
                 case ST_STOPPING:
                     btn.setText("MENGHENTIKAN...");
@@ -284,7 +292,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MENGHENTIKAN...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(getColor(R.color.status_amber));
+                    glitchFlash(statusBar, getColor(R.color.status_amber));
                     break;
             }
             boolean cfg = (st == ST_IDLE);
@@ -835,9 +843,43 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    // Glitchcore cy3: HUD in-app pengganti Toast - teks prefix "> " ala
+    // terminal, auto-hide 2.4 detik; fallback ke Toast kalau dipanggil
+    // sebelum binding layout selesai.
+    private void hud(final String msg) {
+        if (hudToast == null) {
+            android.widget.Toast.makeText(this, msg,
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ui.post(() -> {
+            hudToast.removeCallbacks(hudHide);
+            hudToast.setText("> " + msg);
+            hudToast.setVisibility(android.view.View.VISIBLE);
+            hudToast.setAlpha(0f);
+            hudToast.animate().alpha(1f).setDuration(90).start();
+            hudToast.postDelayed(hudHide, 2400);
+        });
+    }
+
+    // Glitchcore cy3: kilat 4 langkah putih -> merah -> cyan -> putih
+    // sebelum warna status final (kesan "sinyal kehilangan sinkron" saat
+    // engine pindah state). Hormati pengaturan animasi (animScale 0 =
+    // langsung warna final, tanpa kilat).
+    private void glitchFlash(final TextView tv, final int finalColor) {
+        if (animScale() <= 0f) {
+            tv.setTextColor(finalColor);
+            return;
+        }
+        tv.setTextColor(getColor(R.color.glitch_white));
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.glitch_shadow)), 45);
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.m3_primary)), 90);
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.glitch_white)), 135);
+        tv.postDelayed(() -> tv.setTextColor(finalColor), 180);
+    }
+
     private void toastDns(String msg) {
-        ui.post(() -> android.widget.Toast.makeText(this, msg,
-                android.widget.Toast.LENGTH_SHORT).show());
+        hud(msg);
     }
 
     private void toggleVpn() {
@@ -849,9 +891,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (engineState != ST_RUNNING) {
-            ui.post(() -> android.widget.Toast.makeText(this,
-                    "Start engine dulu sebelum VPN",
-                    android.widget.Toast.LENGTH_SHORT).show());
+            hud("Start engine dulu sebelum VPN");
             return;
         }
         String mode = dnsModeKey();
@@ -1702,6 +1742,16 @@ public class MainActivity extends AppCompatActivity {
                         .getDisplayMetrics().density);
                 pill.setLayoutParams(lp);
             }
+            // HUD notifikasi: tepat di atas pill (inset + 96dp).
+            View hudView = findViewById(R.id.hudToast);
+            if (hudView != null) {
+                android.widget.FrameLayout.LayoutParams hp =
+                        (android.widget.FrameLayout.LayoutParams)
+                                hudView.getLayoutParams();
+                hp.bottomMargin = bars.bottom + (int) (96 * getResources()
+                        .getDisplayMetrics().density);
+                hudView.setLayoutParams(hp);
+            }
             int[] scrolls = {R.id.pageHome, R.id.pageSesi, R.id.logScroll,
                     R.id.pageSetting};
             for (int id : scrolls) {
@@ -1716,20 +1766,25 @@ public class MainActivity extends AppCompatActivity {
 
         headerStats = findViewById(R.id.headerStats);
         statusBar = findViewById(R.id.statusBar);
-        // Glitchcore: ghost RGB-split - bayangan merah 60% offset 2dp ke
+        // Glitchcore: ghost RGB-split - bayangan merah 70% offset 3dp ke
         // kanan, blur tipis 1dp (tanpa custom view/blur). Warna teks status
-        // tetap berubah via status_*; ghost merah di belakangnya tetap
+        // tetap dinamis via glitchFlash/status_*; ghost merah di belakangnya
         // konsisten sebagai sisi R dari pasangan chromatic (vs cyan UI).
         float gShadowD = getResources().getDisplayMetrics().density;
-        statusBar.setShadowLayer(1f * gShadowD, 2f * gShadowD, 0f,
+        statusBar.setShadowLayer(1f * gShadowD, 3f * gShadowD, 0f,
                 getColor(R.color.glitch_shadow));
         heroLoading = findViewById(R.id.heroLoading);
         logView = findViewById(R.id.logView);
+        hudToast = findViewById(R.id.hudToast);
         totalView = findViewById(R.id.totalView);
         verifyView = findViewById(R.id.verifyView);
         testResult = findViewById(R.id.testResult);
         monRam = findViewById(R.id.monRam);
         monGo = findViewById(R.id.monGo);
+        // Glitchcore: sisi C dari pasangan chromatic - ghost cyan offset
+        // KIRI di subtitle engine (kebalikan arah ghost merah statusBar).
+        monGo.setShadowLayer(1f * gShadowD, -2f * gShadowD, 0f,
+                getColor(R.color.glitch_shadow_cyan));
         monCpu = findViewById(R.id.monCpu);
         monCache = findViewById(R.id.monCache);
         monSesi = findViewById(R.id.monSesi);
@@ -1753,9 +1808,7 @@ public class MainActivity extends AppCompatActivity {
                         ? "goroutine dump OK: " + path
                         : "goroutine dump gagal: " + err;
                     log(msg);
-                    runOnUiThread(() ->
-                        android.widget.Toast.makeText(this, msg,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> hud(msg));
                 } catch (Exception e) {
                     log("goroutine dump error: " + e);
                 }
@@ -1776,9 +1829,7 @@ public class MainActivity extends AppCompatActivity {
                         ? "heap dump OK: " + path
                         : "heap dump gagal: " + err;
                     log(msg);
-                    runOnUiThread(() ->
-                        android.widget.Toast.makeText(this, msg,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> hud(msg));
                 } catch (Exception e) {
                     log("heap dump error: " + e);
                 }
@@ -1974,9 +2025,7 @@ public class MainActivity extends AppCompatActivity {
         vpnDropReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context ctx, Intent it) {
                 log(LV_WARN, "KILL SWITCH: VPN putus tak terduga!");
-                ui.post(() -> android.widget.Toast.makeText(ctx,
-                        "VPN putus! Trafik tidak aman.",
-                        android.widget.Toast.LENGTH_LONG).show());
+                hud("VPN putus! Trafik tidak aman.");
                 updateVpnUi();
             }
         };
@@ -2020,9 +2069,7 @@ public class MainActivity extends AppCompatActivity {
                         for (LogEntry e : logLines) pw.println(e.text);
                     }
                     log("log diekspor: " + out.getAbsolutePath());
-                    ui.post(() -> android.widget.Toast.makeText(this,
-                            "Log tersimpan: " + name,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    hud("Log tersimpan: " + name);
                 }
             } catch (Exception e) {
                 log(LV_ERROR, "gagal ekspor log: " + e.getMessage());
@@ -2139,9 +2186,7 @@ public class MainActivity extends AppCompatActivity {
         if (req == PICK_CONF && res == RESULT_OK && data != null) {
             if (profiles.size() >= MAX_PROFILES) {
                 log(LV_WARN, "maksimal " + MAX_PROFILES + " profile");
-                ui.post(() -> android.widget.Toast.makeText(this,
-                        "Maksimal " + MAX_PROFILES + " profile",
-                        android.widget.Toast.LENGTH_SHORT).show());
+                hud("Maksimal " + MAX_PROFILES + " profile");
                 return;
             }
             Uri uri = data.getData();

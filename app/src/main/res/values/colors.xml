@@ -35,16 +35,33 @@
          lebih tajam di kanvas near-black, sekaligus jadi sisi R dari
          pasangan chromatic aberration (vs primary cyan). -->
     <color name="status_red">#FF3355</color>
-    <color name="status_amber">#FFD740</color>
+    <!-- status_amber -> ACID #D4FF3F (glitchcore 70%): kuning-hijau asam
+         khas glitch, dipakai saat MEMULAI/MENGHENTIKAN. Kontras vs hero
+         #00404F ~8:1 - aman. -->
+    <color name="status_amber">#D4FF3F</color>
     <color name="status_green">#69F0AE</color>
     <color name="status_coral">#FF8A80</color>
     <color name="status_gray">#8FA3B8</color>
 
-    <!-- Aksen Glitchcore (fusi cy2) - trik HUD tanpa blur/custom view:
+    <!-- Aksen Glitchcore (fusi cy2, dieskalasi cy3 jadi 70%):
          glitch_scan = garis scanline dashed cyan 30% (divider antar
-         kartu), glitch_shadow = ghost merah 60% utk RGB-split shadow
-         statusBar (setShadowLayer dx 2dp). Keduanya turunan palet yang
-         sudah ada - tidak menambah hue baru di luar cyan/magenta/red. -->
+         kartu), glitch_shadow = ghost merah 70% utk RGB-split statusBar,
+         glitch_shadow_cyan = ghost cyan sisi berlawanan (monGo, offset
+         kiri), glitch_white = kilat flash saat perpindahan state.
+         Semua turunan palet yang sudah ada - tanpa hue baru. -->
     <color name="glitch_scan">#4D22D3EE</color>
-    <color name="glitch_shadow">#99FF3355</color>
+    <color name="glitch_shadow">#B3FF3355</color>
+    <color name="glitch_shadow_cyan">#9922D3EE</color>
+    <color name="glitch_white">#E6F6FF</color>
+
+    <!-- Sweep abu-abu netral M3 (cy3): keluarga surfaceContainer yang
+         tidak ikut remap cy1 masih memakai default lib (neutral gray
+         #1D1B20 dst) - terlihat sbg "box abu-abu" di komponen lib
+         (dropdown, snackbar, dsb). Semua dipetakan ke tangga near-black
+         ber-tona biru supaya 100% kanvas cybercore. -->
+    <color name="m3_surface_container_lowest">#0A0F16</color>
+    <color name="m3_surface_container_low">#0E141D</color>
+    <color name="m3_surface_container">#121A26</color>
+    <color name="m3_surface_dim">#080C13</color>
+    <color name="m3_surface_bright">#202C3D</color>
 </resources>

@@ -75,6 +75,7 @@
                         android:orientation="vertical">
 
                         <TextView android:id="@+id/statusBar"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="BERHENTI"
@@ -82,10 +83,12 @@
                             android:drawablePadding="8dp"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            android:letterSpacing="0.12"
                             android:gravity="center"
                             android:textColor="?attr/colorOnPrimaryContainer" />
 
                         <TextView android:id="@+id/monGo"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -159,12 +162,14 @@
                             android:textColor="?attr/colorOnSurfaceVariant" />
 
                         <TextView android:id="@+id/vpnStatus"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="12dp"
                             android:text="VPN (TUN): tidak dipakai"
                             android:textSize="14sp" />
                         <TextView android:id="@+id/vpnStats"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -189,6 +194,7 @@
                             android:layout_marginTop="8dp"
                             android:text="TEST PING" />
                         <TextView android:id="@+id/pingResult"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
@@ -197,6 +203,14 @@
                             android:visibility="gone" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- Glitchcore: scanline kedua (VPN -> Monitor) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
 
                 <!-- KARTU MONITOR: grafik dulu, baru angka (komposisi baru) -->
                 <com.google.android.material.card.MaterialCardView
@@ -221,6 +235,7 @@
                             android:layout_height="120dp"
                             android:layout_marginTop="8dp" />
                         <TextView android:id="@+id/headerStats"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_gravity="end"
@@ -257,6 +272,7 @@
                                     android:fontFamily="monospace"
                                     android:textAppearance="?attr/textAppearanceTitleLarge" />
                                 <TextView android:id="@+id/monRxTotal"
+                                    android:fontFamily="monospace"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="total -"
@@ -282,6 +298,7 @@
                                     android:fontFamily="monospace"
                                     android:textAppearance="?attr/textAppearanceTitleLarge" />
                                 <TextView android:id="@+id/monTxTotal"
+                                    android:fontFamily="monospace"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="total -"
@@ -296,12 +313,14 @@
                             android:orientation="horizontal"
                             android:layout_marginTop="8dp">
                             <TextView android:id="@+id/monRam"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="RAM: -"
                                 android:textSize="14sp" />
                             <TextView android:id="@+id/monCpu"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
@@ -314,12 +333,14 @@
                             android:orientation="horizontal"
                             android:layout_marginTop="4dp">
                             <TextView android:id="@+id/monCache"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="Cache: -"
                                 android:textSize="14sp" />
                             <TextView android:id="@+id/monSesi"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
@@ -375,6 +396,7 @@
                             android:text="Profil Config"
                             android:textAppearance="?attr/textAppearanceTitleMedium" />
                         <TextView android:id="@+id/totalView"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -400,6 +422,14 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- Glitchcore: scanline ketiga (Profil -> Proxy) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
+
                 <!-- KARTU PROXY -->
                 <com.google.android.material.card.MaterialCardView
                     style="@style/Widget.Wpmulti.Card"
@@ -422,6 +452,7 @@
                             android:orientation="vertical"
                             android:paddingTop="8dp" />
                         <TextView android:id="@+id/proxyStatus"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
@@ -429,6 +460,14 @@
                             android:textSize="14sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- Glitchcore: scanline keempat (Proxy -> Uji Proxy) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
 
                 <!-- KARTU UJI PROXY -->
                 <com.google.android.material.card.MaterialCardView
@@ -479,12 +518,14 @@
                                 android:text="TEST 20x" />
                         </LinearLayout>
                         <TextView android:id="@+id/testResult"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:text=""
                             android:textSize="13sp" />
                         <TextView android:id="@+id/verifyView"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -506,6 +547,16 @@
             android:paddingTop="12dp"
             android:paddingEnd="12dp"
             android:visibility="gone">
+
+            <!-- Glitchcore: scanline header log -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/divider_scanline"
+                android:layerType="software" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -793,6 +844,30 @@
         </ScrollView>
 
     </FrameLayout>
+
+    <!-- Glitchcore: HUD notifikasi in-app (pengganti Toast sistem yang
+         tampil sbg box abu-abu gelap default tepat di atas pill).
+         Monospace + caps + stroke neon; margin bawah dihitung listener
+         rootMain = inset nav + 96dp (tepat di atas pill). -->
+    <TextView android:id="@+id/hudToast"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="96dp"
+        android:background="@drawable/bg_hud"
+        android:elevation="8dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.08"
+        android:maxLines="3"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/glitch_white"
+        android:textSize="13sp"
+        android:visibility="gone" />
 
     <!-- Navbar pill melayang (M3 Expressive): FloatingToolbarLayout dari
          material 1.14.0 - container pill full-round (ShapeAppearance.M3.

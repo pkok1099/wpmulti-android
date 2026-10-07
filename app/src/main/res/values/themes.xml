@@ -23,9 +23,23 @@
         <item name="colorSurface">@color/m3_surface</item>
         <item name="android:colorBackground">@color/m3_surface</item>
         <item name="colorSurfaceContainerHighest">@color/m3_surface_container_high</item>
+        <!-- Sweep cy3: seluruh keluarga surfaceContainer (dulu default
+             neutral gray lib) -> tangga near-black biru cybercore. -->
+        <item name="colorSurfaceContainerLowest">@color/m3_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/m3_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/m3_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/m3_surface_container_high</item>
+        <item name="colorSurfaceDim">@color/m3_surface_dim</item>
+        <item name="colorSurfaceBright">@color/m3_surface_bright</item>
         <item name="colorOnSurfaceVariant">@color/m3_on_surface_variant</item>
         <item name="colorOutline">@color/m3_outline</item>
         <item name="colorTertiary">@color/m3_tertiary</item>
+        <!-- Overscroll glow cyan (bukan default abu-abu). -->
+        <item name="android:colorEdgeEffect">@color/glitch_scan</item>
+        <!-- Snackbar (defensif): kalaupun dipakai nanti, tetap cyber,
+             tidak memakai inverseSurface terang bawaan M3. -->
+        <item name="snackbarStyle">@style/Widget.Wpmulti.Snackbar</item>
+        <item name="snackbarTextViewStyle">@style/Widget.Wpmulti.Snackbar.TextView</item>
 
         <!-- Tombol default tonal - kini ber-tona cyan container (cybercore)
              hierarki primary tetap bisa ditambah eksplisit nanti -->
@@ -111,5 +125,18 @@
     </style>
     <style name="Widget.Wpmulti.Nav" parent="Widget.Material3.BottomNavigationView">
         <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
+    </style>
+
+    <!-- Snackbar cyber (defensif cy3): container near-black biru + teks
+         monospace cyan muda. Tidak dipakai kode saat ini (notif lewat HUD
+         in-app), tapi style disiapkan agar tak pernah muncul box terang
+         default M3. -->
+    <style name="Widget.Wpmulti.Snackbar" parent="Widget.Material3.Snackbar">
+        <item name="backgroundTint">@color/m3_surface_container_high</item>
+        <item name="elevation">6dp</item>
+    </style>
+    <style name="Widget.Wpmulti.Snackbar.TextView" parent="Widget.Material3.Snackbar.TextView">
+        <item name="android:textColor">@color/m3_on_primary_container</item>
+        <item name="android:typeface">monospace</item>
     </style>
 </resources>
