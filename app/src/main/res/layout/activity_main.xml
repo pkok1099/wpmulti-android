@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Overhaul UI 3/7: Beranda (2/7) + Halaman Sesi komposisi baru.
+<!-- Overhaul UI 4/7: halaman Setelan & Log masuk pola kartu.
      Beranda: HeroCard (statusBar + monGo + btnEngine) → Kartu VPN
      (vpnStatus/vpnStats/vpnToggleBtn/pingTestBtn/pingResult) → Kartu
      Monitor (trafficGraph di ATAS angka + headerStats + grid mon*/
@@ -9,10 +9,16 @@
      Sesi: Kartu Profil (totalView + configList + addBtn) → Kartu Proxy
      (proxyTable + proxyStatus) → Kartu Uji Proxy (testUrl di
      TextInputLayout Widget.Wpmulti.TextField + test1Btn/test20Btn +
-     testResult + verifyView). Kartu Proxy dipindah dari pageHome
-     (kondisi transisi 2/7 selesai); Profil Config dipindah dari
-     pageSetting sesuai peta ID plan (Sesi saja — duplikat ID dalam
-     1 layout membuat findViewById salah bind).
+     testResult + verifyView).
+     Setelan (4/7): 2 kartu Widget.Wpmulti.Card — "VPN & Trafik"
+     (vpnDnsMode/vpnDnsServer di TextField/vpnIpMode/vpnAppMode/
+     vpnPickAppsBtn/vpnAppCount/vpnPickIpModeBtn/vpnIpModeAppCount/
+     vpnAutoReconnect/vpnSysSettingsBtn; spinner+checkbox bawaan tema;
+     sub-heading bold 14sp; catatan 12sp) → "Aplikasi" (settingVer/
+     settingDevice/settingPaths + exportLogBtn/clearCacheBtn).
+     Log (4/7): logFilter di TextInputLayout Widget.Wpmulti.TextField;
+     copyLogBtn/clearLogBtn OutlinedButton; logLevel/logScroll/logView
+     pindahan Task 1 tetap.
      Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
      BottomNavigationView (navHome/navSesi/navLog/navSetelan). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -400,21 +406,30 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1" />
                 <Button android:id="@+id/copyLogBtn"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
                     android:text="COPY" />
                 <Button android:id="@+id/clearLogBtn"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
                     android:text="CLEAR" />
             </LinearLayout>
-            <EditText android:id="@+id/logFilter"
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.Wpmulti.TextField"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="filter teks..."
-                android:singleLine="true" />
+                android:layout_marginTop="8dp"
+                android:hint="filter teks...">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/logFilter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
             <ScrollView android:id="@+id/logScroll"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -428,185 +443,236 @@
             </ScrollView>
         </LinearLayout>
 
-        <!-- PAGE: SETTING -->
+        <!-- PAGE: SETTING — 2 kartu Widget.Wpmulti.Card (margin antar
+             kartu 8dp): "VPN & Trafik" lalu "Aplikasi". Spinner & CheckBox
+             bawaan tema (tidak dibungkus style custom); sub-heading dalam
+             kartu bold 14sp; catatan 12sp tidak diubah isinya.
+             Profil Config (totalView/configList/addBtn) tetap di pageSesi
+             (task 3 sesuai peta ID plan) — jangan dibuat ulang di sini agar
+             ID tidak duplikat. -->
         <ScrollView android:id="@+id/pageSetting"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:fillViewport="true"
             android:padding="12dp"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
-                <!-- Profil Config (totalView/configList/addBtn) dipindah
-                     ke pageSesi di task 3 sesuai peta ID plan — di sini
-                     jangan dibuat ulang agar ID tidak duplikat. -->
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Mode DNS"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <Spinner android:id="@+id/vpnDnsMode"
+
+                <!-- KARTU VPN & TRAFIK -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Server DNS"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <EditText android:id="@+id/vpnDnsServer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="URL atau IP"
-                    android:inputType="text"
-                    android:singleLine="true"
-                    android:textSize="14sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Berlaku saat VPN di-connect berikutnya."
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Mode IP"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <Spinner android:id="@+id/vpnIpMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Bypass = versi IP itu tidak masuk VPN."
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Aplikasi (split tunneling)"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <Spinner android:id="@+id/vpnAppMode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-                <Button android:id="@+id/vpnPickAppsBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Pilih aplikasi..." />
-                <TextView android:id="@+id/vpnAppCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Belum ada aplikasi dipilih"
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Mode IP per aplikasi"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <Button android:id="@+id/vpnPickIpModeBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Pilih mode IP per aplikasi..." />
-                <TextView android:id="@+id/vpnIpModeAppCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Belum ada aplikasi diatur"
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Hanya berlaku saat Mode IP global = Dual-stack."
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Kill Switch"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <CheckBox android:id="@+id/vpnAutoReconnect"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Reconnect otomatis saat VPN putus"
-                    android:textSize="14sp"
-                    android:checked="true" />
-                <Button android:id="@+id/vpnSysSettingsBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Pengaturan VPN sistem" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Proteksi penuh: aktifkan 'Block connections without VPN' di pengaturan sistem."
-                    android:textSize="12sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Catatan: hanya TCP yang di-relay (IPv4+IPv6). DNS dienkripsi sesuai mode di atas (DoH/DoT/DoQ) atau plain UDP/53. UDP lain &amp; ping ke internet di-drop."
-                    android:textSize="12sp"
-                    android:paddingBottom="16dp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Setting"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:paddingBottom="8dp" />
-                <TextView android:id="@+id/settingVer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="wpmulti-test"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:padding="4dp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Perangkat"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <TextView android:id="@+id/settingDevice"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="-"
-                    android:textSize="13sp"
-                    android:padding="4dp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Penyimpanan"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-                <TextView android:id="@+id/settingPaths"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="-"
-                    android:textSize="13sp"
-                    android:padding="4dp" />
-                <Button android:id="@+id/exportLogBtn"
+                    android:layout_height="wrap_content">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="VPN &amp; Trafik"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Mode DNS"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <Spinner android:id="@+id/vpnDnsMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Server DNS"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Wpmulti.TextField"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:hint="URL atau IP">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/vpnDnsServer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="text"
+                                android:singleLine="true" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Berlaku saat VPN di-connect berikutnya."
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Mode IP"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <Spinner android:id="@+id/vpnIpMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Bypass = versi IP itu tidak masuk VPN."
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Aplikasi (split tunneling)"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <Spinner android:id="@+id/vpnAppMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                        <Button android:id="@+id/vpnPickAppsBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Pilih aplikasi..." />
+                        <TextView android:id="@+id/vpnAppCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Belum ada aplikasi dipilih"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Mode IP per aplikasi"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <Button android:id="@+id/vpnPickIpModeBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Pilih mode IP per aplikasi..." />
+                        <TextView android:id="@+id/vpnIpModeAppCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Belum ada aplikasi diatur"
+                            android:textSize="12sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Hanya berlaku saat Mode IP global = Dual-stack."
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Kill Switch"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <CheckBox android:id="@+id/vpnAutoReconnect"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Reconnect otomatis saat VPN putus"
+                            android:textSize="14sp"
+                            android:checked="true" />
+                        <Button android:id="@+id/vpnSysSettingsBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Pengaturan VPN sistem" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Proteksi penuh: aktifkan 'Block connections without VPN' di pengaturan sistem."
+                            android:textSize="12sp" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Catatan: hanya TCP yang di-relay (IPv4+IPv6). DNS dienkripsi sesuai mode di atas (DoH/DoT/DoQ) atau plain UDP/53. UDP lain &amp; ping ke internet di-drop."
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU APLIKASI -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="EXPORT LOG KE FILE" />
-                <Button android:id="@+id/clearCacheBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="HAPUS CACHE" />
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Aplikasi"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <TextView android:id="@+id/settingVer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="wpmulti-test"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Perangkat"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <TextView android:id="@+id/settingDevice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="-"
+                            android:textSize="13sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Penyimpanan"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <TextView android:id="@+id/settingPaths"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="-"
+                            android:textSize="13sp" />
+                        <Button android:id="@+id/exportLogBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="EXPORT LOG KE FILE" />
+                        <Button android:id="@+id/clearCacheBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="HAPUS CACHE" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
         </ScrollView>
 
