@@ -5,13 +5,17 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.TextWatcher;
 import android.text.TextUtils;
 import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StrikethroughSpan;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
@@ -22,34 +26,35 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * GlitchText - mesin glitch "banyak tapi tipis" (Task 32, 70% glitchcore).
+ * GlitchText - mesin glitch "banyak tapi tipis" (Task 32, dieskalasi
+ * Task 33 jadi EVENT-DRIVEN di semua interaksi).
  *
- * Filosofi: BUKAN shadow tebal di satu teks, tapi BANYAK instansi kecil
- * yang berpindah-pindah di SELURUH teks UI (dashboard, sesi, log, setelan,
- * termasuk row config/proxy/sesi dinamis). Tiga lapisan:
+ * Dua jalur glitch:
+ *  A) WANDER (Task 32): loop acak 240-560ms pilih 2-4 TextView (bias
+ *     judul bold) untuk kilatan 130-190ms - ghost baseline tipis red 20%
+ *     di SEMUA TextView membuat kesan misregister permanen.
+ *  B) EVENT (Task 33): glitch dipecat PADA PERUBAHAN, bukan hanya acak:
+ *     - pindah halaman: glitchTree(page) dari showPage()
+ *     - teks berubah: TextWatcher massal di SEMUA TextView terdaftar
+ *       (status, throughput, counter split tunnel, proxy status, ...)
+ *       memicu burst otomatis - guard reentrant mencegah loop.
+ *     - mengetik: EditText terdaftar mode INPUT - tiap perubahan teks
+ *       memicu kilat ghost merah PADA teks yang diketik (tanpa span/
+ *       setText supaya cursor & IME aman) + glitch di section sekitar.
+ *     - dropdown dibuka: Spinner + Button dipasang touch listener
+ *       (installTouch) yang memicu glitch di section-nya - terasa
+ *       dropdown "muncul karena glitch".
+ *     - setting berubah (spinner/checkbox): listener existing memanggil
+ *       glitchTree(section).
+ *     - sesuatu muncul (row config/proxy baru): glitchAppear() -
+ *       flicker alpha 4 langkah + burst span, seolah "muncul karena
+ *       glitch".
  *
- *   1. BASELINE - semua TextView terdaftar dapat ghost tipis 1dp red 20%
- *      (glitch_shadow_thin) -> kesan "print misregister" permanen di semua
- *      teks, tanpa mengganggu keterbacaan.
- *   2. WANDER BURST - tiap 380-800ms dipilih 1-3 TextView acak (bias ke
- *      judul bold) untuk kilatan 130-190ms: 1-3 karakter acak diberi warna
- *      neon (cyan/magenta/acid/red via ForegroundColorSpan), sesekali
- *      strike-through (StrikethroughSpan) dan blok highlight acid
- *      (BackgroundColorSpan = "datamosh block"), plus ghost shadow RGB
- *      2dp yang arahnya bergantian (kiri cyan / kanan merah).
- *   3. RESTORE AMAN - kilatan di-restore ke teks dasar; jika ada update
- *      teks dinamis (throughput, status) terjadi di tengah kilatan,
- *      restore di-skip (guard TextUtils.equals) supaya teks baru tidak
- *      pernah tertimpa teks lama.
- *
- * Disiplin yang dijaga: tanpa emoji, tanpa custom view/blur (semua via
- * shadowLayer + span bawaan platform), warna 100% dari resource,
- * tanpa menyentuh token sudut. Registry memakai WeakReference sehingga
- * rotasi activity tidak bocor; registerTree() idempotent (dedup by
- * referensi) dan boleh dipanggil ulang setiap row dinamis dibangun.
- * Status glow khusus (statusBar merah dx 3dp, monGo cyan dx -2dp dari
- * fase cy3) didaftarkan via registerCustom() agar baseline-nya tetap
- * dipelihara saat restore.
+ * Restorasi AMAN: guard TextUtils.equals - teks dinamis yang berubah di
+ * tengah kilatan tidak pernah tertimpa teks lama. logView DIBIARKAN
+ * BERSIH total (permintaan Task 33: kejelasan log di atas estetika).
+ * Registry WeakReference (anti-leak), registerTree idempotent, warna
+ * 100% resource, tanpa emoji/custom view/blur, token sudut tak disentuh.
  */
 public final class GlitchText {
 
@@ -57,15 +62,20 @@ public final class GlitchText {
     private static final class Node {
         final WeakReference<TextView> ref;
         final boolean hot;       // judul bold / teks utama -> lebih sering
-        final boolean spannable; // false utk logView besar (shadow only)
+        final boolean spannable; // false utk input & logView
+        final boolean input;     // true = EditText (ghost kilat saat ketik)
+        final boolean hasShadow; // baseline shadow ada (false = EditText)
         final float baseRadius, baseDx, baseDy;
         final int baseShadowColor;
 
         Node(WeakReference<TextView> ref, boolean hot, boolean spannable,
+             boolean input, boolean hasShadow,
              float baseRadius, float baseDx, float baseDy, int baseShadowColor) {
             this.ref = ref;
             this.hot = hot;
             this.spannable = spannable;
+            this.input = input;
+            this.hasShadow = hasShadow;
             this.baseRadius = baseRadius;
             this.baseDx = baseDx;
             this.baseDy = baseDy;
@@ -92,6 +102,9 @@ public final class GlitchText {
     private static boolean running;
     private static boolean tickQueued;
     private static boolean restoreQueued;
+    /** Guard reentrant: setText dari burst/restore TIDAK boleh memicu
+     *  watcher lagi (TextWatcher onTextChanged -> burst -> setText ...). */
+    private static boolean sApplying;
 
     private GlitchText() {}
 
@@ -112,39 +125,88 @@ public final class GlitchText {
     }
 
     /**
-     * Daftarkan TextView dengan ghost shadow KUSTOM (mis. statusBar merah
+     * Daftarkan TextView dengan ghost shadow KUSTOM (statusBar merah
      * dx 3dp, monGo cyan dx -2dp) - baseline ini yang dipulihkan saat
      * restore, bukan ghost tipis standar. Idempotent per referensi.
      */
     public static void registerCustom(TextView tv, float dxDp, int shadowColor) {
         if (tv == null || findNode(tv) != null) return;
-        NODES.add(new Node(new WeakReference<>(tv), true, true,
+        NODES.add(new Node(new WeakReference<>(tv), true, true, false, true,
                 1f * DENSITY, dxDp * DENSITY, 0f, shadowColor));
     }
 
     /**
-     * Traverse pohon view: SEMUA TextView (bukan EditText/input) jadi
-     * anggota registry - dashboard, sesi, log, setelan sekaligus.
-     * Panggil ulang aman (dedup); panggil setiap row dinamis dibangun.
+     * Traverse pohon view: SEMUA TextView jadi anggota registry - dashboard,
+     * sesi, log, setelan sekaligus. EditText masuk mode INPUT (glitch saat
+     * mengetik), logView dilewati BERSIH. Panggil ulang aman (dedup).
      */
     public static void registerTree(View root) {
         if (root != null) walk(root);
     }
 
+    /**
+     * Pasang glitch touch: SEMUA Button di tree -> glitchNow saat ditekan
+     * (return false = click listener tetap jalan normal); SEMUA Spinner ->
+     * glitchTree(section-nya) saat disentuh (dropdown "muncul karena
+     * glitch"). Panggil ulang aman (listener menimpa dirinya sendiri).
+     */
+    public static void installTouch(View root) {
+        if (root == null) return;
+        if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++)
+                installTouch(g.getChildAt(i));
+            return;
+        }
+        if (root instanceof Spinner) {
+            Spinner sp = (Spinner) root;
+            sp.setOnTouchListener((v, ev) -> {
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    View p = v.getParent() instanceof View
+                            ? (View) v.getParent() : null;
+                    glitchTree(p);
+                }
+                return false;
+            });
+            return;
+        }
+        if (root instanceof Button && root instanceof TextView) {
+            TextView b = (TextView) root;
+            b.setOnTouchListener((v, ev) -> {
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN)
+                    glitchNow((TextView) v);
+                return false;
+            });
+        }
+    }
+
     private static void walk(View v) {
         if (v instanceof TextView) {
             TextView tv = (TextView) v;
-            // Input user tidak pernah di-glitch (kebacaan & editing).
-            if (tv instanceof EditText || findNode(tv) != null) return;
+            if (findNode(tv) != null) return; // dedup
+
+            // logView dibersihkan total - kejelasan log > estetika (Task 33)
+            if (tv.getId() == R.id.logView) return;
+
+            if (tv instanceof EditText) {
+                // INPUT: tanpa span/setText (cursor & IME aman); watcher
+                // menembak ghost merah kilat pada teks yang diketik.
+                Node n = new Node(new WeakReference<>(tv), false, false,
+                        true, false, 0f, 0f, 0f, 0);
+                NODES.add(n);
+                tv.addTextChangedListener(new GlitchWatcher(n));
+                return;
+            }
+
             float d = DENSITY;
+            // Baseline ghost tipis di SEMUA TextView (misregister permanen).
             tv.setShadowLayer(1f * d, 1f * d, 0f, THIN_SHADOW);
-            // logView bisa ribuan baris & di-update per baris -> cukup
-            // ghost baseline, tanpa span wander (hemat & anti-jump scroll).
-            boolean isLog = tv.getId() == R.id.logView;
-            // Judul bold = target "hot" (65% peluang dipilih).
             boolean hot = tv.getTypeface() != null && tv.getTypeface().isBold();
-            NODES.add(new Node(new WeakReference<>(tv), hot, !isLog,
-                    1f * d, 1f * d, 0f, THIN_SHADOW));
+            Node n = new Node(new WeakReference<>(tv), hot, true, false,
+                    true, 1f * d, 1f * d, 0f, THIN_SHADOW);
+            NODES.add(n);
+            // Task 33: teks berubah (status, counter, hint, ...) = glitch.
+            tv.addTextChangedListener(new GlitchWatcher(n));
             return; // TextView tidak punya anak view
         }
         if (v instanceof ViewGroup) {
@@ -153,13 +215,84 @@ public final class GlitchText {
         }
     }
 
+    // ---------------- EVENT API (Task 33) ----------------
+
+    /** Glitch sekali pada satu TextView (span + ghost kilat, auto-restore). */
+    public static void glitchNow(TextView tv) {
+        if (tv == null) return;
+        Node n = findNode(tv);
+        if (n != null) {
+            burst(n);
+        } else {
+            // Belum terdaftar (mis. view dinamis): burst ad-hoc span saja.
+            CharSequence cur = tv.getText();
+            if (cur == null || cur.length() == 0) return;
+            SpannableString sp = new SpannableString(cur);
+            int start = RND.nextInt(cur.length());
+            int end = Math.min(cur.length(), start + 1 + RND.nextInt(2));
+            sp.setSpan(new ForegroundColorSpan(
+                            PALETTE[RND.nextInt(PALETTE.length)]),
+                    start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sApplying = true;
+            tv.setText(sp);
+            sApplying = false;
+            PENDING.put(tv, cur);
+            float d = DENSITY;
+            tv.setShadowLayer(1.2f * d, 2f * d, 0f, BURST_SHADOW_RED);
+            SHADOWED.put(tv, new Node(new WeakReference<>(tv), false, true,
+                    false, false, 1.2f * d, 2f * d, 0f, BURST_SHADOW_RED));
+        }
+        scheduleRestore(130 + RND.nextInt(90));
+    }
+
+    /**
+     * Glitch SEKALI pada semua TextView di bawah root - dipakai saat
+     * pindah halaman, dropdown dibuka, setting berubah, row muncul.
+     */
+    public static void glitchTree(View root) {
+        if (root == null || !running) return;
+        ArrayList<Node> targets = new ArrayList<>();
+        collect(root, targets);
+        for (Node n : targets) burst(n);
+        if (!targets.isEmpty()) scheduleRestore(150 + RND.nextInt(80));
+    }
+
+    /**
+     * "Muncul karena glitch": flicker alpha 4 langkah + burst span di
+     * seluruh subtree - dipakai saat row config baru dirender.
+     */
+    public static void glitchAppear(View v) {
+        if (v == null || !running) return;
+        glitchTree(v);
+        v.setAlpha(0f);
+        v.postDelayed(() -> v.setAlpha(1f), 45);
+        v.postDelayed(() -> v.setAlpha(0.25f), 95);
+        v.postDelayed(() -> v.setAlpha(0.7f), 140);
+        v.postDelayed(() -> v.setAlpha(1f), 185);
+    }
+
+    private static void collect(View v, ArrayList<Node> out) {
+        if (v instanceof TextView) {
+            Node n = findNode((TextView) v);
+            if (n != null) out.add(n);
+            return;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++)
+                collect(g.getChildAt(i), out);
+        }
+    }
+
+    // ---------------- WANDER LOOP (Task 32, diedit Task 33) ----------------
+
     /** Mulai loop wander (panggil di onResume). Idempotent. */
     public static void start(Context ctx) {
         init(ctx);
         purge();
         if (running) return;
         running = true;
-        scheduleTick(250 + RND.nextInt(300));
+        scheduleTick(200 + RND.nextInt(250));
     }
 
     /** Hentikan loop + bersihkan semua kilatan aktif (onPause). */
@@ -197,13 +330,14 @@ public final class GlitchText {
                 if (n.hot) aliveHot.add(n);
             }
             if (!alive.isEmpty()) {
-                int bursts = 1 + RND.nextInt(3); // 1..3 target per tick
+                // Task 33: lebih sering & lebih banyak (2..4 target/tick).
+                int bursts = 2 + RND.nextInt(3);
                 for (int i = 0; i < bursts; i++) {
                     Node n = pick(alive, aliveHot);
                     if (n != null) burst(n);
                 }
             }
-            scheduleTick(380 + RND.nextInt(420));
+            scheduleTick(240 + RND.nextInt(320));
             scheduleRestore(130 + RND.nextInt(60));
         }
     };
@@ -261,12 +395,15 @@ public final class GlitchText {
                     }
                     made++;
                 }
+                sApplying = true;
                 tv.setText(sp);
+                sApplying = false;
                 PENDING.put(tv, base);
             }
         }
 
         // Kilat shadow RGB bergantian arah: kiri = cyan, kanan = merah.
+        // EditText (input=true) juga kena - ghost pada teks yang diketik.
         boolean left = RND.nextBoolean();
         float d = DENSITY;
         tv.setShadowLayer(1.2f * d, (left ? -2f : 2f) * d, 0f,
@@ -285,7 +422,11 @@ public final class GlitchText {
                 if (tv == null) continue;
                 // Guard teks dinamis: hanya pulihkan bila karakternya
                 // masih persis teks dasar (kilatan tidak mengubah char).
-                if (TextUtils.equals(tv.getText(), base)) tv.setText(base);
+                if (TextUtils.equals(tv.getText(), base)) {
+                    sApplying = true;
+                    tv.setText(base);
+                    sApplying = false;
+                }
             }
         }
         if (!SHADOWED.isEmpty()) {
@@ -296,8 +437,14 @@ public final class GlitchText {
                 Node n = e.getValue();
                 it.remove();
                 if (tv == null || n == null) continue;
-                tv.setShadowLayer(n.baseRadius, n.baseDx, n.baseDy,
-                        n.baseShadowColor);
+                float d = DENSITY;
+                if (n.hasShadow) {
+                    tv.setShadowLayer(n.baseRadius, n.baseDx, n.baseDy,
+                            n.baseShadowColor);
+                } else {
+                    // EditText: tanpa baseline shadow - matikan ghost.
+                    tv.setShadowLayer(0f, 0f, 0f, 0);
+                }
             }
         }
     }
@@ -314,5 +461,43 @@ public final class GlitchText {
             if (n.ref.get() == tv) return n;
         }
         return null;
+    }
+
+    /**
+     * Watcher massal (Task 33): teks berubah -> burst otomatis.
+     * - TextView biasa: span + ghost (restorasi guard TextUtils.equals).
+     * - EditText (input): ghost saja, tanpa menyentuh teks ketikan.
+     * Guard sApplying mencegah loop; guard running mencegah burst saat
+     * activity tidak terlihat (PENDING tak pernah tertinggal nyangkut).
+     */
+    private static final class GlitchWatcher implements TextWatcher {
+        private final Node node;
+
+        GlitchWatcher(Node node) { this.node = node; }
+
+        @Override public void beforeTextChanged(
+                CharSequence s, int a, int b, int c) {}
+
+        @Override public void onTextChanged(
+                CharSequence s, int start, int before, int count) {
+            if (sApplying || !running) return;
+            // Post ringan: biarkan layout selesai dulu baru glitch.
+            H.postDelayed(() -> {
+                if (sApplying || !running) return;
+                TextView tv = node.ref.get();
+                if (tv == null) return;
+                burst(node);
+                if (node.input) {
+                    // Saat mengetik: sekitarnya juga ikut "rusak".
+                    View p = tv.getParent() instanceof View
+                            ? (View) tv.getParent() : null;
+                    if (p != null) glitchTree(p);
+                }
+                scheduleRestore(120 + RND.nextInt(80));
+            }, 30 + RND.nextInt(50));
+        }
+
+        @Override public void afterTextChanged(
+                android.text.Editable s) {}
     }
 }

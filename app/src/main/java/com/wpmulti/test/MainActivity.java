@@ -473,6 +473,8 @@ public class MainActivity extends AppCompatActivity {
             v.setVisibility(id == pageId ? View.VISIBLE : View.GONE);
             if (id == pageId) shown = v;
         }
+        // Task 33: pindah halaman = seluruh teks halaman tujuan kilat glitch
+        if (shown != null) GlitchText.glitchTree(shown);
         if (pageAnimView != null) pageAnimView.animate().cancel();
         if (shown != null && animScale() > 0f) {
             pageAnimView = shown;
@@ -992,6 +994,7 @@ public class MainActivity extends AppCompatActivity {
             View row = LayoutInflater.from(this)
                     .inflate(R.layout.row_config, configContainer, false);
             GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
+            GlitchText.installTouch(row); // Task 33: tombol +/-/max/hapus glitch
             ((TextView) row.findViewById(R.id.label)).setText(pr.name);
             EditText et = row.findViewById(R.id.count);
             et.setText(String.valueOf(pr.count));
@@ -1045,6 +1048,8 @@ public class MainActivity extends AppCompatActivity {
         }
         updateTotal();
         updateAddBtn();
+        // Task 33: config "muncul karena glitch" - flicker alpha + burst span
+        GlitchText.glitchAppear(configContainer);
         // terapkan lock jika engine tidak idle
         if (engineState != ST_IDLE) setEngineState(engineState);
     }
@@ -1091,6 +1096,7 @@ public class MainActivity extends AppCompatActivity {
         boolean running = EngineClient.get().snapshot().running;
         addProxyRow("SOCKS5", "127.0.0.1:1080", running);
         addProxyRow("HTTP", "127.0.0.1:8080", running);
+        GlitchText.glitchTree(proxyTable); // Task 33: tabel proxy "muncul karena glitch"
         updateVpnUi(); // segarkan juga label proxy/VPN dari sumber yang sama
     }
 
@@ -1098,6 +1104,7 @@ public class MainActivity extends AppCompatActivity {
         View row = LayoutInflater.from(this)
                 .inflate(R.layout.row_proxy, proxyTable, false);
         GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
+        GlitchText.installTouch(row); // Task 33: tombol salin glitch
         ((TextView) row.findViewById(R.id.proxyName)).setText(name);
         ((TextView) row.findViewById(R.id.proxyAddr)).setText(addr);
         ((TextView) row.findViewById(R.id.proxyStatus))
@@ -1872,9 +1879,11 @@ public class MainActivity extends AppCompatActivity {
                 findViewById(R.id.vpnAutoReconnect);
         this.vpnAutoReconnect = vpnAutoReconnect;
         vpnAutoReconnect.setChecked(vprefs.getBoolean("auto_reconnect", true));
-        vpnAutoReconnect.setOnCheckedChangeListener((b, checked) ->
+        vpnAutoReconnect.setOnCheckedChangeListener((b, checked) -> {
+                GlitchText.glitchTree((View) b.getParent()); // Task 33: setting berubah = glitch
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
-                        .putBoolean("auto_reconnect", checked).apply());
+                        .putBoolean("auto_reconnect", checked).apply();
+        });
         vpnAppMode = findViewById(R.id.vpnAppMode);
         vpnAppCount = findViewById(R.id.vpnAppCount);
         String[] appModes = {"Semua aplikasi", "Hanya yang dipilih",
@@ -1896,6 +1905,9 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "allow" : ps == 2 ? "deny" : "all";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_app_mode", mk).apply();
+                // Task 33: split tunnel pindah mode = glitch di section
+                GlitchText.glitchTree((View) pa.getParent());
+                GlitchText.glitchNow(vpnAppCount);
                 updateVpnAppCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
@@ -1922,6 +1934,10 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "v6only" : ps == 2 ? "v4only" : "dual";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_ip_mode", mk).apply();
+                // Task 33: mode per IP pindah = glitch di section + counter
+                GlitchText.glitchTree((View) pa.getParent());
+                GlitchText.glitchNow(vpnIpModeAppCount);
+                updateVpnIpModeCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
         });
@@ -1942,6 +1958,8 @@ public class MainActivity extends AppCompatActivity {
                 new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p,
                                        android.view.View v, int ps, long id) {
+                // Task 33: dropdown DNS diganti = glitch di section
+                GlitchText.glitchTree((View) p.getParent());
                 updateDnsHint();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
@@ -1957,6 +1975,9 @@ public class MainActivity extends AppCompatActivity {
         // mesin glitch - ghost tipis baseline + wander burst span neon.
         // Input user (EditText) dan logView span dikecualikan di dalamnya.
         GlitchText.registerTree(findViewById(R.id.rootMain));
+        // Task 33: SEMUA Button (glitch saat ditekan) + Spinner (glitch saat
+        // dropdown dibuka) di seluruh halaman.
+        GlitchText.installTouch(findViewById(R.id.rootMain));
 
         // bottom navigation (4 tab) — pengganti navigasi drawer lama
         BottomNavigationView bnv = findViewById(R.id.bottomNav);
@@ -1988,6 +2009,7 @@ public class MainActivity extends AppCompatActivity {
         logLevel.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
                 logLevelSel = (String) p.getItemAtPosition(pos);
+                GlitchText.glitchTree((View) p.getParent()); // Task 33
                 renderLog();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
