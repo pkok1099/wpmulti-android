@@ -136,6 +136,8 @@ public class MainActivity extends AppCompatActivity {
     // morph: fallback diam + log sekali saja bila background tombol
     // ternyata bukan MaterialShapeDrawable (fitur tidak boleh crash).
     private boolean msdWarned = false;
+    // bounce: pola sama dengan morph - fitur hidup tidak boleh crash.
+    private boolean bounceWarned = false;
     private final List<Profile> profiles = new ArrayList<>();
     private final List<EditText> countFields = new ArrayList<>();
     private final List<View> configRows = new ArrayList<>();
@@ -403,15 +405,29 @@ public class MainActivity extends AppCompatActivity {
 
     // Bounce spring halus saat tombol kembali aktif (state berubah).
     // Di-guard animScale; dipicu hanya dari jalur fxChanged.
+    // FIX crash "Final position of the spring cannot be greater than the
+    // max value": SpringForce() tanpa setFinalPosition memakai default
+    // Double.MAX_VALUE (AAR dynamicanimation 1.1.0, terverifikasi via
+    // javap); setSpring(f) menimpa SpringForce(1f) dari konstruktor, lalu
+    // (float) Double.MAX_VALUE = +Infinity -> sanityCheck() melempar.
+    // Final position kini eksplisit di SpringForce; try/catch meniru morph
+    // (fitur hidup tidak boleh crash).
     private void bounceEngine(final MaterialButton btn) {
         if (animScale() <= 0f) return;
-        SpringForce f = new SpringForce()
-                .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
-                .setStiffness(SpringForce.STIFFNESS_LOW);
-        new SpringAnimation(btn, DynamicAnimation.SCALE_X, 1f)
-                .setSpring(f).setStartValue(0.92f).start();
-        new SpringAnimation(btn, DynamicAnimation.SCALE_Y, 1f)
-                .setSpring(f).setStartValue(0.92f).start();
+        try {
+            SpringForce f = new SpringForce(1f)
+                    .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
+                    .setStiffness(SpringForce.STIFFNESS_LOW);
+            new SpringAnimation(btn, DynamicAnimation.SCALE_X, 1f)
+                    .setSpring(f).setStartValue(0.92f).start();
+            new SpringAnimation(btn, DynamicAnimation.SCALE_Y, 1f)
+                    .setSpring(f).setStartValue(0.92f).start();
+        } catch (Exception e) {
+            if (!bounceWarned) {
+                bounceWarned = true;
+                log(LV_DEBUG, "bounce dilewati: " + e.getMessage());
+            }
+        }
     }
 
     // ---------- Pages ----------
