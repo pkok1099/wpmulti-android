@@ -381,11 +381,13 @@ public class MainActivity extends AppCompatActivity {
             float target = st == ST_RUNNING
                     ? hgt / 2f
                     : 8 * getResources().getDisplayMetrics().density;
+            // lambda butuh effectively-final (msd di-reassign di atas)
+            final MaterialShapeDrawable msdF = msd;
             ValueAnimator va = ValueAnimator.ofFloat(from, target);
             va.setDuration(260);
             va.addUpdateListener(a -> {
                 float r = (Float) a.getAnimatedValue();
-                msd.setShapeAppearanceModel(
+                msdF.setShapeAppearanceModel(
                         ShapeAppearanceModel.builder()
                                 .setAllCornerSizes(r)
                                 .build());
