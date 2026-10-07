@@ -3,4 +3,10 @@
     <color name="btn_bg">#E0E0E0</color>
     <color name="btn_text">#212121</color>
     <color name="ic_launcher_background">#101828</color>
+
+    <!-- Token tema-invariant (sama di light/night): scrim overlay + sidebar
+         gelap permanen. Nanti dipetakan ke token M3E (scrim/inverseSurface). -->
+    <color name="scrim">#80000000</color>
+    <color name="sidebar_bg">#FF1E1E1E</color>
+    <color name="sidebar_divider">#33FFFFFF</color>
 </resources>

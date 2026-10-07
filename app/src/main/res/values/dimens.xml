@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Token shape pra-Material 3 Expressive: sudut sengaja dijaga tegas
+         (tidak terlalu round). Saat migrasi M3E nanti, tinggal geser nilai
+         token di sini - tidak perlu menyentuh tiap drawable/layout. -->
+    <dimen name="corner_small">6dp</dimen>
+    <dimen name="corner_medium">10dp</dimen>
+    <dimen name="corner_large">14dp</dimen>
+</resources>
