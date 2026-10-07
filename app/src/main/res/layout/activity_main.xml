@@ -20,20 +20,17 @@
      copyLogBtn/clearLogBtn OutlinedButton; logLevel/logScroll/logView
      pindahan Task 1 tetap.
      Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
-     BottomNavigationView (navHome/navSesi/navLog/navSetelan). -->
+     BottomNavigationView (navHome/navSesi/navLog/navSetelan).
+     Hotfix: MaterialToolbar placeholder (56dp, judul saja, tanpa id &
+     tanpa rujukan Java) DIHAPUS - navigasi sudah ditangani bottom nav.
+     Konten pertama kini mulai 12dp di bawah status bar (inset system
+     bars diterapkan SEKALI di listener rootMain, MainActivity). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
-
-    <!-- Top bar -->
-    <com.google.android.material.appbar.MaterialToolbar
-        style="@style/Widget.Material3.Toolbar.OnSurface"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:title="wpmulti-test" />
 
     <!-- Page container -->
     <FrameLayout

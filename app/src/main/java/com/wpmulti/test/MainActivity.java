@@ -1401,10 +1401,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // TAHAP 2: WindowInsets — root layout diberi padding systemBars
-        // (top + bottom) supaya toolbar (hamburger + judul) tidak tertimpa
-        // status bar dan tombol STOP tidak tertutup navigation bar.
-        // (targetSdk 35+ memaksa edge-to-edge; minSdk 34 -> API platform
-        // WindowInsets.Type tersedia tanpa androidx.)
+        // (top + bottom) supaya konten tidak tertimpa status bar dan
+        // bottom nav tidak tertutup navigation bar. SATU-satunya tempat
+        // inset diterapkan (hotfix: MaterialToolbar placeholder 56dp yang
+        // menyebabkan ruang kosong atas dihapus dari layout; konten pertama
+        // kini mulai 12dp di bawah status bar). targetSdk 36 memaksa
+        // edge-to-edge; minSdk 34 -> API WindowInsets.Type tersedia
+        // tanpa androidx.
         View rootMain = findViewById(R.id.rootMain);
         rootMain.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(
