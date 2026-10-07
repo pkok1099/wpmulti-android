@@ -35,8 +35,8 @@
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|density"
             android:enableOnBackInvokedCallback="false">
             <!-- enableOnBackInvokedCallback=false: targetSdk 36 menyalakan
-                 predictive back; tanpa opt-out ini onBackPressed() untuk
-                 menutup sidebar tidak akan pernah dipanggil. -->
+                 predictive back; tanpa opt-out ini onBackPressed() tidak
+                 akan pernah dipanggil. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

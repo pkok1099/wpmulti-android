@@ -1,72 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Overhaul UI 1/7: kerangka komposisi baru — MaterialToolbar + container
+     4 halaman (FrameLayout weight=1) + BottomNavigationView. Navigasi lama
+     berbasis drawer dihapus total; penggantinya menu bottom_nav.xml
+     (navHome/navSesi/navLog/navSetelan).
+     pageLog & pageSetting dipindah APA ADANYA dari layout lama.
+     pageHome sementara memuat konten dashboard lama (semua ID widget-nya
+     masih direferensikan MainActivity di luar blok navigasi, jadi stub
+     TextView akan memutus kompilasi); kontennya dibebaskan di task 2.
+     pageSesi masih stub (diisi task 3). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
-    <!-- ===== MAIN CONTENT ===== -->
-    <LinearLayout
+    <!-- Top bar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        style="@style/Widget.Material3.Toolbar.OnSurface"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="?attr/actionBarSize"
+        android:title="wpmulti-test" />
 
-        <!-- Top bar -->
-        <LinearLayout
+    <!-- Page container -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- PAGE: HOME (konten dashboard lama, dipindah sementara) -->
+        <LinearLayout android:id="@+id/pageHome"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:padding="8dp">
-            <Button android:id="@+id/btnMenu"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                app:icon="@drawable/ic_menu"
-                app:iconTint="?attr/colorOnSurfaceVariant" />
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="wpmulti-test"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp" />
-            <TextView android:id="@+id/headerStats"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="RAM: - | CPU: -"
-                android:textSize="12sp" />
-        </LinearLayout>
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-        <!-- Status bar (persistent) -->
-        <TextView android:id="@+id/statusBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="BERHENTI"
-            android:drawableStart="@drawable/ic_dot_red"
-            android:drawablePadding="8dp"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:padding="10dp" />
-
-        <!-- Page container -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
-
-            <!-- PAGE: DASHBOARD -->
-            <ScrollView android:id="@+id/pageDashboard"
+            <!-- Status bar (persistent) -->
+            <TextView android:id="@+id/statusBar"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
+                android:text="BERHENTI"
+                android:drawableStart="@drawable/ic_dot_red"
+                android:drawablePadding="8dp"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:padding="10dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:padding="12dp">
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
+                    <TextView android:id="@+id/headerStats"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end"
+                        android:text="RAM: - | CPU: -"
+                        android:textSize="12sp" />
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -214,336 +208,293 @@
                 </LinearLayout>
             </ScrollView>
 
-            <!-- PAGE: LOG -->
-            <LinearLayout android:id="@+id/pageLog"
+            <!-- START/STOP toggle (persistent) -->
+            <Button android:id="@+id/btnEngine"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:padding="12dp"
-                android:visibility="gone">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-                    <Spinner android:id="@+id/logLevel"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1" />
-                    <Button android:id="@+id/copyLogBtn"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="COPY" />
-                    <Button android:id="@+id/clearLogBtn"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="CLEAR" />
-                </LinearLayout>
-                <EditText android:id="@+id/logFilter"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="filter teks..."
-                    android:singleLine="true" />
-                <ScrollView android:id="@+id/logScroll"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:layout_marginTop="8dp">
-                    <TextView android:id="@+id/logView"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:textSize="12sp"
-                        android:typeface="monospace" />
-                </ScrollView>
-            </LinearLayout>
+                android:layout_height="wrap_content"
+                android:layout_margin="16dp"
+                android:text="START"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_play"
+                app:iconGravity="textStart"
+                app:iconPadding="10dp"
+                app:iconTint="?attr/colorPrimary" />
+        </LinearLayout>
 
-            <!-- PAGE: SETTING -->
-            <ScrollView android:id="@+id/pageSetting"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:padding="12dp"
-                android:visibility="gone">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Profile Config"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                    <TextView android:id="@+id/totalView"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="total sesi: 0"
-                        android:textSize="14sp"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="8dp" />
-                    <LinearLayout android:id="@+id/configList"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
-                    <Button android:id="@+id/addBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="UPLOAD PROFILE" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Maks 5 profile, 240 sesi per profile"
-                        android:textSize="12sp"
-                        android:paddingBottom="16dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Mode DNS"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <Spinner android:id="@+id/vpnDnsMode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Server DNS"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <EditText android:id="@+id/vpnDnsServer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="URL atau IP"
-                        android:inputType="text"
-                        android:singleLine="true"
-                        android:textSize="14sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Berlaku saat VPN di-connect berikutnya."
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Mode IP"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <Spinner android:id="@+id/vpnIpMode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Bypass = versi IP itu tidak masuk VPN."
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Aplikasi (split tunneling)"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <Spinner android:id="@+id/vpnAppMode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-                    <Button android:id="@+id/vpnPickAppsBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Pilih aplikasi..." />
-                    <TextView android:id="@+id/vpnAppCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Belum ada aplikasi dipilih"
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Mode IP per aplikasi"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <Button android:id="@+id/vpnPickIpModeBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Pilih mode IP per aplikasi..." />
-                    <TextView android:id="@+id/vpnIpModeAppCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Belum ada aplikasi diatur"
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Hanya berlaku saat Mode IP global = Dual-stack."
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Kill Switch"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <CheckBox android:id="@+id/vpnAutoReconnect"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Reconnect otomatis saat VPN putus"
-                        android:textSize="14sp"
-                        android:checked="true" />
-                    <Button android:id="@+id/vpnSysSettingsBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Pengaturan VPN sistem" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Proteksi penuh: aktifkan 'Block connections without VPN' di pengaturan sistem."
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Catatan: hanya TCP yang di-relay (IPv4+IPv6). DNS dienkripsi sesuai mode di atas (DoH/DoT/DoQ) atau plain UDP/53. UDP lain &amp; ping ke internet di-drop."
-                        android:textSize="12sp"
-                        android:paddingBottom="16dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Setting"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:paddingBottom="8dp" />
-                    <TextView android:id="@+id/settingVer"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="wpmulti-test"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:padding="4dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Perangkat"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <TextView android:id="@+id/settingDevice"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="-"
-                        android:textSize="13sp"
-                        android:padding="4dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Penyimpanan"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <TextView android:id="@+id/settingPaths"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="-"
-                        android:textSize="13sp"
-                        android:padding="4dp" />
-                    <Button android:id="@+id/exportLogBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="EXPORT LOG KE FILE" />
-                    <Button android:id="@+id/clearCacheBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="HAPUS CACHE" />
-                </LinearLayout>
-            </ScrollView>
-
+        <!-- PAGE: SESI (stub — diisi task 3) -->
+        <FrameLayout android:id="@+id/pageSesi"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Halaman Sesi (stub — diisi task 3)" />
         </FrameLayout>
 
-        <!-- START/STOP toggle (persistent) -->
-        <Button android:id="@+id/btnEngine"
+        <!-- PAGE: LOG -->
+        <LinearLayout android:id="@+id/pageLog"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:text="START"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            app:icon="@drawable/ic_play"
-            app:iconGravity="textStart"
-            app:iconPadding="10dp"
-            app:iconTint="?attr/colorPrimary" />
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <Spinner android:id="@+id/logLevel"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+                <Button android:id="@+id/copyLogBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="COPY" />
+                <Button android:id="@+id/clearLogBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="CLEAR" />
+            </LinearLayout>
+            <EditText android:id="@+id/logFilter"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="filter teks..."
+                android:singleLine="true" />
+            <ScrollView android:id="@+id/logScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="8dp">
+                <TextView android:id="@+id/logView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:typeface="monospace" />
+            </ScrollView>
+        </LinearLayout>
 
-    </LinearLayout>
+        <!-- PAGE: SETTING -->
+        <ScrollView android:id="@+id/pageSetting"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="12dp"
+            android:visibility="gone">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Profile Config"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+                <TextView android:id="@+id/totalView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="total sesi: 0"
+                    android:textSize="14sp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="8dp" />
+                <LinearLayout android:id="@+id/configList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+                <Button android:id="@+id/addBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="UPLOAD PROFILE" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Maks 5 profile, 240 sesi per profile"
+                    android:textSize="12sp"
+                    android:paddingBottom="16dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Mode DNS"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <Spinner android:id="@+id/vpnDnsMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Server DNS"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <EditText android:id="@+id/vpnDnsServer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="URL atau IP"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:textSize="14sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Berlaku saat VPN di-connect berikutnya."
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Mode IP"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <Spinner android:id="@+id/vpnIpMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Bypass = versi IP itu tidak masuk VPN."
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Aplikasi (split tunneling)"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <Spinner android:id="@+id/vpnAppMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+                <Button android:id="@+id/vpnPickAppsBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Pilih aplikasi..." />
+                <TextView android:id="@+id/vpnAppCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Belum ada aplikasi dipilih"
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Mode IP per aplikasi"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <Button android:id="@+id/vpnPickIpModeBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Pilih mode IP per aplikasi..." />
+                <TextView android:id="@+id/vpnIpModeAppCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Belum ada aplikasi diatur"
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Hanya berlaku saat Mode IP global = Dual-stack."
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Kill Switch"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <CheckBox android:id="@+id/vpnAutoReconnect"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Reconnect otomatis saat VPN putus"
+                    android:textSize="14sp"
+                    android:checked="true" />
+                <Button android:id="@+id/vpnSysSettingsBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Pengaturan VPN sistem" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Proteksi penuh: aktifkan 'Block connections without VPN' di pengaturan sistem."
+                    android:textSize="12sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Catatan: hanya TCP yang di-relay (IPv4+IPv6). DNS dienkripsi sesuai mode di atas (DoH/DoT/DoQ) atau plain UDP/53. UDP lain &amp; ping ke internet di-drop."
+                    android:textSize="12sp"
+                    android:paddingBottom="16dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Setting"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:paddingBottom="8dp" />
+                <TextView android:id="@+id/settingVer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="wpmulti-test"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:padding="4dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Perangkat"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView android:id="@+id/settingDevice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-"
+                    android:textSize="13sp"
+                    android:padding="4dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Penyimpanan"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView android:id="@+id/settingPaths"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-"
+                    android:textSize="13sp"
+                    android:padding="4dp" />
+                <Button android:id="@+id/exportLogBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="EXPORT LOG KE FILE" />
+                <Button android:id="@+id/clearCacheBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="HAPUS CACHE" />
+            </LinearLayout>
+        </ScrollView>
 
-    <!-- Scrim -->
-    <View android:id="@+id/scrim"
+    </FrameLayout>
+
+    <!-- Bottom navigation: 4 tab -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/scrim"
-        android:visibility="gone" />
+        android:layout_height="wrap_content"
+        app:menu="@menu/bottom_nav"
+        app:labelVisibilityMode="labeled" />
 
-    <!-- ===== SIDEBAR ===== -->
-    <LinearLayout android:id="@+id/sidebar"
-        android:layout_width="280dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="start"
-        android:orientation="vertical"
-        android:background="@color/sidebar_bg"
-        android:visibility="gone">
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="wpmulti-test"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textColor="@color/sidebar_text"
-            android:padding="20dp" />
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/sidebar_divider" />
-        <TextView android:id="@+id/menuDashboard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Dashboard"
-            android:background="?android:attr/selectableItemBackground"
-            android:drawableStart="@drawable/ic_dashboard"
-            android:drawablePadding="12dp"
-            android:gravity="center_vertical"
-            android:textSize="16sp"
-            android:textColor="@color/sidebar_text"
-            android:padding="16dp" />
-        <TextView android:id="@+id/menuSetting"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Setting"
-            android:background="?android:attr/selectableItemBackground"
-            android:drawableStart="@drawable/ic_settings"
-            android:drawablePadding="12dp"
-            android:gravity="center_vertical"
-            android:textSize="16sp"
-            android:textColor="@color/sidebar_text"
-            android:padding="16dp" />
-        <TextView android:id="@+id/menuLog"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Log"
-            android:background="?android:attr/selectableItemBackground"
-            android:drawableStart="@drawable/ic_log"
-            android:drawablePadding="12dp"
-            android:gravity="center_vertical"
-            android:textSize="16sp"
-            android:textColor="@color/sidebar_text"
-            android:padding="16dp" />
-    </LinearLayout>
-
-</FrameLayout>
+</LinearLayout>

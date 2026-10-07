@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overhaul UI 1/7: menu BottomNavigationView 4 tab. Urutan & id dipakai
+     MainActivity (setOnItemSelectedListener) — jangan ubah id. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/navHome"
+        android:icon="@drawable/ic_dashboard"
+        android:title="Beranda" />
+    <item android:id="@+id/navSesi"
+        android:icon="@drawable/ic_config"
+        android:title="Sesi" />
+    <item android:id="@+id/navLog"
+        android:icon="@drawable/ic_log"
+        android:title="Log" />
+    <item android:id="@+id/navSetelan"
+        android:icon="@drawable/ic_settings"
+        android:title="Setelan" />
+</menu>

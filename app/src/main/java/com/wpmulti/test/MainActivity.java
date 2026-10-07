@@ -1,6 +1,7 @@
 package com.wpmulti.test;
 
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
@@ -164,7 +165,7 @@ public class MainActivity extends AppCompatActivity {
         logRenderPending = true;
         ui.post(() -> {
             logRenderPending = false;
-            if (currentPage == 2) renderLog(); // hanya saat halaman Log terlihat
+            if (currentPage == R.id.pageLog) renderLog(); // hanya saat halaman Log terlihat
         });
     }
 
@@ -270,46 +271,20 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ---------- Sidebar ----------
-    private void openSidebar() {
-        View sidebar = findViewById(R.id.sidebar);
-        View scrim = findViewById(R.id.scrim);
-        if (sidebar.getVisibility() == View.VISIBLE) return;
-        sidebar.setVisibility(View.VISIBLE);
-        sidebar.post(() -> {
-            sidebar.setTranslationX(-sidebar.getWidth());
-            sidebar.animate().translationX(0).setDuration(220).start();
-        });
-        scrim.setVisibility(View.VISIBLE);
-        scrim.setAlpha(0f);
-        scrim.animate().alpha(1f).setDuration(220).start();
-    }
-
-    private void closeSidebar() {
-        View sidebar = findViewById(R.id.sidebar);
-        View scrim = findViewById(R.id.scrim);
-        if (sidebar.getVisibility() != View.VISIBLE) return;
-        sidebar.animate().translationX(-sidebar.getWidth()).setDuration(220)
-                .withEndAction(() -> sidebar.setVisibility(View.GONE)).start();
-        scrim.animate().alpha(0f).setDuration(220)
-                .withEndAction(() -> scrim.setVisibility(View.GONE)).start();
-    }
-
     // ---------- Pages ----------
-    private int currentPage = 0;
+    private int currentPage = R.id.pageHome;
 
-    private void showPage(int idx) {
-        currentPage = idx;
-        int[] pages = {R.id.pageDashboard, R.id.pageSetting, R.id.pageLog};
-        int[] menus = {R.id.menuDashboard, R.id.menuSetting, R.id.menuLog};
-        for (int i = 0; i < pages.length; i++) {
-            findViewById(pages[i]).setVisibility(
-                    i == idx ? View.VISIBLE : View.GONE);
-            findViewById(menus[i]).setBackgroundColor(
-                    i == idx ? 0x33FFFFFF : 0x00000000);
+    // Overhaul UI 1/7: navigasi by-ID halaman (pageHome/pageSesi/pageLog/
+    // pageSetting) — pengganti showPage(int idx) era navigasi drawer.
+    private void showPage(int pageId) {
+        currentPage = pageId;
+        int[] pages = {R.id.pageHome, R.id.pageSesi, R.id.pageLog,
+                R.id.pageSetting};
+        for (int id : pages) {
+            findViewById(id).setVisibility(id == pageId ? View.VISIBLE
+                    : View.GONE);
         }
-        if (idx == 2) renderLog(); // flush log yang tertunda saat masuk halaman Log
-        closeSidebar();
+        if (pageId == R.id.pageLog) renderLog(); // flush log yang tertunda saat masuk halaman Log
     }
 
     // ---------- VPN ----------
@@ -1035,7 +1010,7 @@ public class MainActivity extends AppCompatActivity {
                 // Dashboard: GET_STATUS (binder + JSON), dirSize rekursif,
                 // dan sessionStats utk 1200 sesi tidak murah; boros CPU
                 // saat hasilnya tidak terlihat siapa pun.
-                if (currentPage != 0) continue;
+                if (currentPage != R.id.pageHome) continue;
                 // TAHAP 1: statistik engine diambil via GET_STATUS (binder
                 // ke :goengine) — runtime Go tidak ada lagi di proses utama.
                 // SATU panggilan status per tick; sessionStats (JSON besar)
@@ -1605,17 +1580,26 @@ public class MainActivity extends AppCompatActivity {
         logFilter = findViewById(R.id.logFilter);
         logLevel = findViewById(R.id.logLevel);
 
-        // sidebar
-        findViewById(R.id.btnMenu).setOnClickListener(v -> openSidebar());
-        findViewById(R.id.scrim).setOnClickListener(v -> closeSidebar());
-        findViewById(R.id.menuDashboard).setOnClickListener(v -> {
-            rebuildProxyTable();
-            updateVpnUi();
-            showPage(0);
+        // bottom navigation (4 tab) — pengganti navigasi drawer lama
+        BottomNavigationView bnv = findViewById(R.id.bottomNav);
+        bnv.setOnItemSelectedListener(item -> {
+            int id = item.getItemId();
+            if (id == R.id.navHome) {
+                rebuildProxyTable();
+                updateVpnUi();
+                showPage(R.id.pageHome);
+            } else if (id == R.id.navSesi) {
+                rebuildProxyTable();
+                showPage(R.id.pageSesi);
+            } else if (id == R.id.navLog) {
+                showPage(R.id.pageLog);
+            } else if (id == R.id.navSetelan) {
+                showPage(R.id.pageSetting);
+            }
+            return true;
         });
-        findViewById(R.id.menuSetting).setOnClickListener(v -> showPage(1));
-        findViewById(R.id.menuLog).setOnClickListener(v -> showPage(2));
-        showPage(0);
+        showPage(R.id.pageHome);
+        bnv.setSelectedItemId(R.id.navHome);
 
         // log level spinner
         ArrayAdapter<String> ad = new ArrayAdapter<>(this,
@@ -1864,16 +1848,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 log(LV_ERROR, "gagal upload profile: " + e.getMessage());
             }
-        }
-    }
-
-    @Override
-    public void onBackPressed() {
-        View sidebar = findViewById(R.id.sidebar);
-        if (sidebar.getVisibility() == View.VISIBLE) {
-            closeSidebar();
-        } else {
-            super.onBackPressed();
         }
     }
 

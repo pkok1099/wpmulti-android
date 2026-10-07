@@ -2,14 +2,6 @@
 <resources>
     <color name="ic_launcher_background">#48227E</color>
 
-    <!-- Token tema-invariant (sama di light/night): scrim overlay + sidebar
-         gelap permanen. Sidebar kini violet gelap (klaster #48227E image
-         digelapkan) dengan divider tint orkid #C281D2. -->
-    <color name="scrim">#80000000</color>
-    <color name="sidebar_bg">#FF261632</color>
-    <color name="sidebar_divider">#38C281D2</color>
-    <color name="sidebar_text">#FFF7FC</color>
-
     <!-- Palet M3 Expressive "Orkid Tegas" - diekstrak dari image referensi
          (anime orkid-magenta). Nilai langsung dari klaster dominan:
          primary #8D32AE, container #FFDAF3, on_container #48227E,
