@@ -115,6 +115,7 @@ Keystore release dibaca dari env `WPMULTI_STORE_*` (tidak ada rahasia di repo).
 | 1.3 | Satu jalur kontrol: semua `Mobile.*` via AIDL ke `:goengine` |
 | 1.4 | Fix `IllegalMonitorStateException` di `EngineClient.awaitConnected()` |
 | 1.5 | Reduksi RAM heap.prof: buffer SOCKS 32KB + idle-GC `FreeOSMemory` |
+| 1.6 | Pass pra-M3E: token shape sudut 6/10/14dp (tidak terlalu round), tombol 12→10dp, token warna scrim/sidebar |
 
 ## Kredit & lisensi
 
