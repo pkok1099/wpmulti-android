@@ -59,7 +59,9 @@ ram-patch-32k/          # patch source (format-patch) + script binary-patch libg
 ## Modul Go (`wpmulti-go/`)
 
 Di-vendor dari [`pkok1099/wpmulti`](https://github.com/pkok1099/wpmulti)
-branch `rebuild/v1.5-base` (merge `ram/bufferpool-32k` + `fix/android-audit`).
+branch `rebuild/v1.5-base` (merge `ram/bufferpool-32k` + `fix/android-audit`) —
+**file modul saja** (source Go, `go.mod`/`go.sum`, `mobile/`); Dockerfile, CI,
+CLI, dan dokumen repo Go tidak diikutkan (itu milik repo `wpmulti` yang terpisah).
 Modul berbasis [wireproxy](https://github.com/pufferffish/wireproxy) + wireguard-go
 (`golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb`) + go-socks5,
 tanpa `replace` lokal — bisa di-build langsung.

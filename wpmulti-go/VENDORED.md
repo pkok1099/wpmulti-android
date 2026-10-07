@@ -1,11 +1,16 @@
 # VENDORED — wpmulti-go
 
-Salinan source modul Go engine (`wpmulti`) yang di-vendor ke dalam repo Android
+Salinan source **modul Go** engine (`wpmulti`) yang di-vendor ke dalam repo Android
 agar repo ini self-contained untuk rebuild AAR.
 
 - **Sumber**: `github.com/pkok1099/wpmulti`, branch `rebuild/v1.5-base`, commit `1937f4f`
 - **Komposisi**: merge dari `ram/bufferpool-32k` (c1fa2d5) + `fix/android-audit` (9799bfb)
 - **Tanggal vendor**: 2026-10-07
+- **Cakupan**: HANYA file modul (source Go + `go.mod`/`go.sum` + `mobile/` + `LICENSE` +
+  catatan ini). Dockerfile, CI (`.github/`), CLI (`cmd/`), `functest/`, service files
+  (`systemd/`, `rc.d/`), dan dokumen repo Go sengaja TIDAK diikutkan — itu milik repo
+  `wpmulti`, bukan repo Android. Verifikasi pasca-trim: `go build ./...`, `go vet`,
+  `go test ./...` lulus semua (root + mobile).
 
 ## Isi optimasi RAM di source ini
 
