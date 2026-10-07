@@ -1,28 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#48227E</color>
+    <color name="ic_launcher_background">#003441</color>
 
-    <!-- Palet M3 Expressive "Orkid Tegas" - diekstrak dari image referensi
-         (anime orkid-magenta). Nilai langsung dari klaster dominan:
-         primary #8D32AE, container #FFDAF3, on_container #48227E,
-         surface_container #FDEAF2. Turunan terkontrol: surface #FFFAFC,
-         teks sekunder #5C4E63, outline #867390 (kontras teks >= 4.5:1).
-         Nilai night ada di values-night. -->
-    <color name="m3_primary">#8D32AE</color>
-    <color name="m3_on_primary">#FFFFFF</color>
-    <color name="m3_primary_container">#FFDAF3</color>
-    <color name="m3_on_primary_container">#48227E</color>
-    <color name="m3_surface">#FFFAFC</color>
-    <color name="m3_surface_container_high">#FDEAF2</color>
-    <color name="m3_on_surface_variant">#5C4E63</color>
-    <color name="m3_outline">#867390</color>
-    <!-- Tertiary: aksen kedua palet orkid (klaster magenta image),
-         dipakai grafik trafik (garis TX). -->
-    <color name="m3_tertiary">#B331A2</color>
+    <!-- Palet M3 Expressive "Cybercore" (dark-only) - pengganti Orkid
+         Tegas. Kanvas near-black biru #0B1119, aksen neon: primary cyan
+         #22D3EE, tertiary magenta #F0ABFC. Kontras terkontrol:
+         on_surface_variant vs container ~6.6:1, primary vs surface
+         ~10:1, semua >= 4.5:1. Identitas gelap tunggal: values-night
+         DIHAPUS, palet ini dipakai di semua konfigurasi. -->
+    <color name="m3_primary">#22D3EE</color>
+    <color name="m3_on_primary">#002833</color>
+    <color name="m3_primary_container">#00404F</color>
+    <color name="m3_on_primary_container">#B8F1FF</color>
+    <color name="m3_surface">#0B1119</color>
+    <color name="m3_surface_container_high">#16202E</color>
+    <color name="m3_on_surface_variant">#93A6BA</color>
+    <color name="m3_outline">#3D5064</color>
+    <!-- Tertiary: aksen kedua cybercore (neon magenta), dipakai grafik
+         trafik (garis TX). -->
+    <color name="m3_tertiary">#F0ABFC</color>
 
-    <!-- Fix pill melayang: warna container pill nav - 90% alpha di atas
-         surface container high light (#FDEAF2) supaya konten yang lewat
-         di belakang pill samar terlihat; elevation lib 6dp tetap memberi
-         shadow lembut agar pill terbaca. -->
-    <color name="nav_pill_container">#E6FDEAF2</color>
+    <!-- Pill nav melayang: container glassy dark 90% alpha (#131D2B)
+         supaya konten yang lewat di belakang pill samar terlihat;
+         elevation lib 6dp tetap memberi shadow agar pill terbaca.
+         Stroke neon TIDAK dipakai: Widget.Material3.FloatingToolbar
+         tidak mengekspos attr stroke (terverifikasi AAR 1.14.0),
+         custom background menggantikan perilaku lib - risiko > manfaat. -->
+    <color name="nav_pill_container">#E6131D2B</color>
+
+    <!-- Warna status semantik - dipakai Java via getColor(); sebelumnya
+         literal 0xFF... tersebar di MainActivity. Neon di atas kanvas
+         gelap; status_gray = "off" (steel dim, tetap >= 7:1 vs surface). -->
+    <color name="status_red">#FF5252</color>
+    <color name="status_amber">#FFD740</color>
+    <color name="status_green">#69F0AE</color>
+    <color name="status_coral">#FF8A80</color>
+    <color name="status_gray">#8FA3B8</color>
 </resources>

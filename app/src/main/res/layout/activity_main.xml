@@ -243,6 +243,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="-"
+                                    android:fontFamily="monospace"
                                     android:textAppearance="?attr/textAppearanceTitleLarge" />
                                 <TextView android:id="@+id/monRxTotal"
                                     android:layout_width="wrap_content"
@@ -267,6 +268,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="-"
+                                    android:fontFamily="monospace"
                                     android:textAppearance="?attr/textAppearanceTitleLarge" />
                                 <TextView android:id="@+id/monTxTotal"
                                     android:layout_width="wrap_content"

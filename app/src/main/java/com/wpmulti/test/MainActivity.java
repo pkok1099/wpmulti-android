@@ -253,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("BERHENTI");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_red, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFF5252);
+                    statusBar.setTextColor(getColor(R.color.status_red));
                     break;
                 case ST_STARTING:
                     btn.setText("MEMULAI...");
@@ -262,7 +262,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MEMULAI...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFFD740);
+                    statusBar.setTextColor(getColor(R.color.status_amber));
                     break;
                 case ST_RUNNING:
                     btn.setText("STOP");
@@ -275,7 +275,7 @@ public class MainActivity extends AppCompatActivity {
                             + EngineClient.get().snapshot().sessions + " sesi");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_green, 0, 0, 0);
-                    statusBar.setTextColor(0xFF69F0AE);
+                    statusBar.setTextColor(getColor(R.color.status_green));
                     break;
                 case ST_STOPPING:
                     btn.setText("MENGHENTIKAN...");
@@ -284,7 +284,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MENGHENTIKAN...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFFD740);
+                    statusBar.setTextColor(getColor(R.color.status_amber));
                     break;
             }
             boolean cfg = (st == ST_IDLE);
@@ -490,7 +490,8 @@ public class MainActivity extends AppCompatActivity {
                         + (proxyOn
                             ? "aktif (SOCKS5 127.0.0.1:1080 \u00b7 HTTP 127.0.0.1:8080)"
                             : "tidak aktif"));
-                proxyStatusView.setTextColor(proxyOn ? 0xFF69F0AE : 0xFFFF8A80);
+                proxyStatusView.setTextColor(getColor(proxyOn
+                        ? R.color.status_green : R.color.status_coral));
             }
             // VPN (TUN) adalah subsistem TERPISAH dari proxy: bisa mati
             // sementara proxy aktif. Label dibuat eksplisit agar tidak
@@ -498,7 +499,8 @@ public class MainActivity extends AppCompatActivity {
             vpnStatusView.setText("VPN (TUN): "
                     + (vpnOn ? "dipakai \u2014 trafik dirutekan lewat tunnel"
                             : "tidak dipakai"));
-            vpnStatusView.setTextColor(vpnOn ? 0xFF69F0AE : 0xFFBDBDBD);
+            vpnStatusView.setTextColor(getColor(vpnOn
+                    ? R.color.status_green : R.color.status_gray));
             if (vpnOn) {
                 vpnStatsView.setText("koneksi TCP: " + VpnEngine.connCount()
                         + "\nRX: " + fmtBytes(VpnEngine.bytesRx())
@@ -1342,8 +1344,13 @@ public class MainActivity extends AppCompatActivity {
                 View dot = chip.findViewById(R.id.chipDot);
                 TextView title = chip.findViewById(R.id.chipTitle);
                 TextView detail = chip.findViewById(R.id.chipDetail);
-                int dotColor = hs < 0 ? 0xFFFF5252
-                        : (active ? 0xFF69F0AE : 0xFFBDBDBD);
+                // Warna status via resource (cybercore) - getContext()
+                // aman utk semua bentuk scope (lambda/anonymous class).
+                int dotColor = hs < 0
+                        ? dot.getContext().getColor(R.color.status_red)
+                        : (active
+                                ? dot.getContext().getColor(R.color.status_green)
+                                : dot.getContext().getColor(R.color.status_gray));
                 dot.getBackground().mutate().setTint(dotColor);
                 title.setText(String.format("#%d hs=%s tx=%s rx=%s",
                         idx, hs < 0 ? "-" : hs + "s",
