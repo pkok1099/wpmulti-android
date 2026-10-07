@@ -1,0 +1,4 @@
+[submodule "wpmulti-go"]
+	path = wpmulti-go
+	url = https://github.com/pkok1099/wpmulti.git
+	branch = rebuild/v1.5-base

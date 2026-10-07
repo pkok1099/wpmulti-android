@@ -52,16 +52,19 @@ satu jalur kontrol, tanpa duplikasi instance.
 app/                    # modul Android (Java, AIDL, manifest, konfigurasi)
 app/libs/wpmulti.aar    # engine Go PREBUILT — versi ter-patch 32KB (sumber kebenaran v1.5)
 app/libs/wpmulti-sources.jar
-wpmulti-go/             # SOURCE modul Go (vendored) untuk rebuild AAR — lihat VENDORED.md
+wpmulti-go/             # GIT SUBMODULE → pkok1099/wpmulti (branch rebuild/v1.5-base)
 ram-patch-32k/          # patch source (format-patch) + script binary-patch libgojni.so
 ```
 
-## Modul Go (`wpmulti-go/`)
+## Modul Go (`wpmulti-go/` — git submodule)
 
-Di-vendor dari [`pkok1099/wpmulti`](https://github.com/pkok1099/wpmulti)
-branch `rebuild/v1.5-base` (merge `ram/bufferpool-32k` + `fix/android-audit`) —
-**file modul saja** (source Go, `go.mod`/`go.sum`, `mobile/`); Dockerfile, CI,
-CLI, dan dokumen repo Go tidak diikutkan (itu milik repo `wpmulti` yang terpisah).
+`wpmulti-go/` BUKAN salinan kode — ini **git submodule** yang menunjuk repo terpisah
+[`pkok1099/wpmulti`](https://github.com/pkok1099/wpmulti) branch `rebuild/v1.5-base`,
+pin di commit `1937f4f` (merge `ram/bufferpool-32k` + `fix/android-audit`).
+Dua repo tetap independen: **semua perubahan source Go di-push ke repo `wpmulti`**,
+lalu pointer submodule di repo Android di-update (bump commit). Ini repo Android
+hanya menyimpan SHA pin, bukan isi file-nya.
+
 Modul berbasis [wireproxy](https://github.com/pufferffish/wireproxy) + wireguard-go
 (`golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb`) + go-socks5,
 tanpa `replace` lokal — bisa di-build langsung.
@@ -79,15 +82,19 @@ GOGC tidak diubah; pool size dan logika WireGuard tidak disentuh.
 ### Rebuild AAR (opsional)
 
 ```bash
-cd wpmulti-go
+git clone --recurse-submodules https://github.com/pkok1099/wpmulti-android.git
+cd wpmulti-android/wpmulti-go
 gomobile bind -target=android -androidapi 34 -o ../app/libs/wpmulti.aar ./mobile
 ```
 
-⚠️ **Baca `wpmulti-go/VENDORED.md` dulu** — modul ini memuat 13 dari 15 binding
-`Mobile.*` yang dipanggil Java. Tiga binding socket-path (`socksSocketPath`,
-`udpSocketPath`, `icmpSocketPath`) hanya ada di tree build asli pemilik repo;
-tanpa mereka kompilasi Java gagal di `GoEngineService.java:127-129`.
-Untuk build APK biasa, **pakai AAR prebuilt** — tidak perlu rebuild.
+⚠️ **Caveat binding**: modul ini memuat 13 dari 15 binding `Mobile.*` yang dipanggil
+Java. Tiga binding socket-path (`socksSocketPath`, `udpSocketPath`, `icmpSocketPath`)
+hanya ada di tree build asli pemilik repo; tanpa mereka kompilasi Java gagal di
+`GoEngineService.java:127-129`. Untuk build APK biasa, **pakai AAR prebuilt** —
+tidak perlu rebuild.
+
+Untuk memutakhirkan modul: commit perubahan di repo `wpmulti`, lalu di repo Android:
+`git -C wpmulti-go fetch && git -C wpmulti-go checkout <sha-baru> && git add wpmulti-go`.
 
 ## Build APK
 
