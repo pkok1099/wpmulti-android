@@ -90,4 +90,16 @@
         <item name="cardBackgroundColor">@color/m3_primary_container</item>
         <item name="contentPadding">16dp</item>
     </style>
+
+    <!-- (Review) warna indikator nav DIBATASI ke BottomNavigationView saja
+         via materialThemeOverlay - dulu diremap global di tema, yang ikut
+         mengubah Switch/CheckBox/Chip di halaman lain. Palet tetap Orkid
+         Tegas, hanya cakupannya yang dipersempit. -->
+    <style name="ThemeOverlay.Wpmulti.NavPill" parent="">
+        <item name="colorSecondaryContainer">@color/m3_primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/m3_on_primary_container</item>
+    </style>
+    <style name="Widget.Wpmulti.Nav" parent="Widget.Material3.BottomNavigationView">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
+    </style>
 </resources>
