@@ -1,6 +1,6 @@
 package com.wpmulti.test;
 
-import android.app.Activity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 // TAHAP 1: TIDAK ADA lagi import mobile.Mobile / mobile.StatusListener di
 // sini — runtime gomobile hanya hidup di proses :goengine; semua kontrol
 // lewat EngineClient (AIDL IEngineControl).
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
     private static final int MAX_PER_CONFIG = 240;
     private static final int MAX_PROFILES = 5;
     private static final int PICK_CONF = 1001;

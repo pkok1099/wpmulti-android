@@ -1,11 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.WpmultiTest" parent="android:Theme.Material.NoActionBar">
-        <item name="android:buttonStyle">@style/Btn.Round</item>
-    </style>
-    <style name="Btn.Round" parent="android:Widget.Material.Button">
-        <item name="android:background">@drawable/btn_round</item>
-        <item name="android:textColor">@color/btn_text</item>
-        <item name="android:minHeight">40dp</item>
+    <!-- Theme WpmultiTest varian DARK: parent M3 Expressive Dark.
+         Item override IDENTIK dengan values/themes.xml (warna resolve
+         otomatis dari values-night/colors.xml). -->
+    <style name="Theme.WpmultiTest" parent="Theme.Material3Expressive.Dark.NoActionBar">
+        <item name="colorPrimary">@color/m3_primary</item>
+        <item name="colorOnPrimary">@color/m3_on_primary</item>
+        <item name="colorPrimaryContainer">@color/m3_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/m3_on_primary_container</item>
+        <item name="colorSurface">@color/m3_surface</item>
+        <item name="android:colorBackground">@color/m3_surface</item>
+        <item name="colorSurfaceContainerHighest">@color/m3_surface_container_high</item>
+        <item name="colorOnSurfaceVariant">@color/m3_on_surface_variant</item>
+        <item name="colorOutline">@color/m3_outline</item>
+
+        <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
+
+        <item name="shapeAppearanceSmallComponent">@style/Shape.Wpmulti.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/Shape.Wpmulti.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/Shape.Wpmulti.Large</item>
+
+        <item name="shapeCornerSizeExtraSmall">@dimen/corner_small</item>
+        <item name="shapeCornerSizeSmall">@dimen/corner_small</item>
+        <item name="shapeCornerSizeMedium">@dimen/corner_medium</item>
+        <item name="shapeCornerSizeLarge">@dimen/corner_large</item>
+        <item name="shapeCornerSizeLargeIncreased">@dimen/corner_large</item>
+        <item name="shapeCornerSizeExtraLarge">@dimen/corner_large</item>
+        <item name="shapeCornerSizeExtraLargeIncreased">@dimen/corner_large</item>
+        <item name="shapeCornerSizeExtraExtraLarge">@dimen/corner_large</item>
     </style>
 </resources>

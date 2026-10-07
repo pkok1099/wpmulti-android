@@ -21,8 +21,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:text="&#9776;"
-                android:textSize="20sp"
-                android:background="@drawable/btn_round" />
+                android:textSize="20sp" />
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -100,15 +99,13 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="TEST 1x"
-                            android:background="@drawable/btn_round" />
+                            android:text="TEST 1x" />
                         <Button android:id="@+id/test20Btn"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:layout_marginStart="8dp"
-                            android:text="TEST 20x"
-                            android:background="@drawable/btn_round" />
+                            android:text="TEST 20x" />
                     </LinearLayout>
                     <TextView android:id="@+id/testResult"
                         android:layout_width="wrap_content"
@@ -146,14 +143,12 @@
                         android:layout_marginTop="12dp"
                         android:text="CONNECT VPN"
                         android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:background="@drawable/btn_round" />
+                        android:textStyle="bold" />
                     <Button android:id="@+id/pingTestBtn"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="TEST PING"
-                        android:background="@drawable/btn_round" />
+                        android:text="TEST PING" />
                     <TextView android:id="@+id/pingResult"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -231,14 +226,12 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:text="COPY"
-                        android:background="@drawable/btn_round" />
+                        android:text="COPY" />
                     <Button android:id="@+id/clearLogBtn"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:text="CLEAR"
-                        android:background="@drawable/btn_round" />
+                        android:text="CLEAR" />
                 </LinearLayout>
                 <EditText android:id="@+id/logFilter"
                     android:layout_width="match_parent"
@@ -289,8 +282,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="UPLOAD PROFILE"
-                        android:background="@drawable/btn_round" />
+                        android:text="UPLOAD PROFILE" />
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -458,14 +450,12 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:text="EXPORT LOG KE FILE"
-                        android:background="@drawable/btn_round" />
+                        android:text="EXPORT LOG KE FILE" />
                     <Button android:id="@+id/clearCacheBtn"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="HAPUS CACHE"
-                        android:background="@drawable/btn_round" />
+                        android:text="HAPUS CACHE" />
                 </LinearLayout>
             </ScrollView>
 
@@ -478,8 +468,7 @@
             android:layout_margin="16dp"
             android:text="&#9654; START"
             android:textSize="18sp"
-            android:textStyle="bold"
-            android:background="@drawable/btn_round" />
+            android:textStyle="bold" />
 
     </LinearLayout>
 

@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="btn_bg">#3A3A3A</color>
-    <color name="btn_text">#F5F5F5</color>
+    <color name="m3_primary">#A8C7FA</color>
+    <color name="m3_on_primary">#062E4F</color>
+    <color name="m3_primary_container">#1E3A5F</color>
+    <color name="m3_on_primary_container">#D0E2F9</color>
+    <color name="m3_surface">#131316</color>
+    <color name="m3_surface_container_high">#3A3D43</color>
+    <color name="m3_on_surface_variant">#C4C7CF</color>
+    <color name="m3_outline">#8E9199</color>
 </resources>

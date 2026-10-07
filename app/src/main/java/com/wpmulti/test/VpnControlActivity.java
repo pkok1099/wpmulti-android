@@ -1,6 +1,6 @@
 package com.wpmulti.test;
 
-import android.app.Activity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.content.Intent;
 import android.net.VpnService;
 import android.os.Bundle;
@@ -14,7 +14,7 @@ import java.io.OutputStream;
  * Exported, jadi bisa dipanggil: am start -n com.wpmulti.test/.VpnControlActivity --es action start
  * Actions: "start" (engine+VPN), "stop" (VPN saja), "toggle".
  */
-public class VpnControlActivity extends Activity {
+public class VpnControlActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

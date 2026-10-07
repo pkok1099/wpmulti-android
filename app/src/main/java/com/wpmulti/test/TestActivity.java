@@ -1,6 +1,6 @@
 package com.wpmulti.test;
 
-import android.app.Activity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,7 +17,7 @@ import java.io.FileWriter;
  * otomatis rebind ke PROSES BARU (goroutine/memory kembali ke basis —
  * bukti teardown penuh, bukan hanya angka pasca-Mobile.stop()).
  */
-public class TestActivity extends Activity {
+public class TestActivity extends AppCompatActivity {
     private static final String TAG = "TestActivity";
     private Handler handler = new Handler(Looper.getMainLooper());
     private StringBuilder result = new StringBuilder();

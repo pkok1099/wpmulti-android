@@ -46,14 +46,14 @@
         <activity
             android:name=".TestActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:theme="@style/Theme.WpmultiTest.Translucent"
             android:excludeFromRecents="true"
             android:noHistory="true" />
         <!-- Kontrol VPN dari luar via am start -->
         <activity
             android:name=".VpnControlActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:theme="@style/Theme.WpmultiTest.Translucent"
             android:excludeFromRecents="true"
             android:noHistory="true" />
         <service

@@ -1,12 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="btn_bg">#E0E0E0</color>
-    <color name="btn_text">#212121</color>
     <color name="ic_launcher_background">#101828</color>
 
     <!-- Token tema-invariant (sama di light/night): scrim overlay + sidebar
-         gelap permanen. Nanti dipetakan ke token M3E (scrim/inverseSurface). -->
+         gelap permanen. -->
     <color name="scrim">#80000000</color>
     <color name="sidebar_bg">#FF1E1E1E</color>
     <color name="sidebar_divider">#33FFFFFF</color>
+
+    <!-- Palet M3 Expressive - skema netral-cool dengan primary navy
+         (identitas launcher #101828). Nilai night ada di values-night. -->
+    <color name="m3_primary">#101828</color>
+    <color name="m3_on_primary">#FFFFFF</color>
+    <color name="m3_primary_container">#D8E2F4</color>
+    <color name="m3_on_primary_container">#0E1A2B</color>
+    <color name="m3_surface">#FFFFFF</color>
+    <color name="m3_surface_container_high">#E4E7EC</color>
+    <color name="m3_on_surface_variant">#454A54</color>
+    <color name="m3_outline">#767C89</color>
 </resources>
