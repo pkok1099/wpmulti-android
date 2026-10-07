@@ -88,6 +88,20 @@
                             android:gravity="center"
                             android:textColor="?attr/colorOnPrimaryContainer" />
 
+                        <!-- Fase 4: LoadingIndicator (widget Expressive
+                             material 1.14.0) saat MEMULAI/MENGHENTIKAN;
+                             visibility diatur dari Java. -->
+                        <com.google.android.material.loadingindicator.LoadingIndicator
+                            android:id="@+id/heroLoading"
+                            style="@style/Widget.Material3.LoadingIndicator"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:layout_marginTop="8dp"
+                            android:visibility="gone"
+                            app:indicatorColor="?attr/colorOnPrimaryContainer"
+                            app:indicatorSize="24dp" />
+
                         <Button android:id="@+id/btnEngine"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"

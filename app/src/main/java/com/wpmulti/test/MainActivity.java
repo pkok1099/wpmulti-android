@@ -3,6 +3,7 @@ package com.wpmulti.test;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
+import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -24,6 +25,11 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import androidx.dynamicanimation.animation.DynamicAnimation;
+import androidx.dynamicanimation.animation.SpringAnimation;
+import androidx.dynamicanimation.animation.SpringForce;
+import com.google.android.material.shape.MaterialShapeDrawable;
+import com.google.android.material.shape.ShapeAppearanceModel;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -119,6 +125,17 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout proxyTable;
     private EditText logFilter;
     private Spinner logLevel;
+    // Fase 4: elemen hidup - LoadingIndicator transisi, denyut dot
+    // status RUNNING, morph sudut tombol START<->STOP, bounce spring.
+    private View heroLoading;
+    private ValueAnimator dotPulse;
+    // guard bounce: dulu bounce terpicu walau state tidak berubah
+    // (setEngineState redundan dari rebuildConfigRows dll) - sekarang
+    // fx hanya jalan saat state benar-benar berubah.
+    private int lastFxState = -1;
+    // morph: fallback diam + log sekali saja bila background tombol
+    // ternyata bukan MaterialShapeDrawable (fitur tidak boleh crash).
+    private boolean msdWarned = false;
     private final List<Profile> profiles = new ArrayList<>();
     private final List<EditText> countFields = new ArrayList<>();
     private final List<View> configRows = new ArrayList<>();
@@ -279,8 +296,120 @@ public class MainActivity extends AppCompatActivity {
             boolean tst = (st == ST_RUNNING);
             findViewById(R.id.test1Btn).setEnabled(tst);
             findViewById(R.id.test20Btn).setEnabled(tst);
+            // Fase 4: elemen hidup - loading transisi, denyut dot, morph
+            // & bounce (morph/bounce hanya saat state benar2 berubah).
+            boolean fxChanged = (st != lastFxState);
+            lastFxState = st;
+            heroLoading.setVisibility(st == ST_STARTING
+                    || st == ST_STOPPING ? View.VISIBLE : View.GONE);
+            updateDotPulse(st);
+            if (fxChanged) {
+                morphEngineButton(btn, st);
+                bounceEngine(btn);
+            }
             updateVpnUi();
         });
+    }
+
+    // ---------- Fase 4: elemen hidup ----------
+    // Denyut dot status saat engine berjalan: alpha compound drawable
+    // status bar 255 <-> ~90, 900ms bolak-balik. Dibatalkan di state
+    // lain dan di onPause (hemat CPU/baterai; dulu jalan terus walau
+    // activity tidak terlihat); dinyalakan lagi di onResume.
+    private void updateDotPulse(int st) {
+        if (st != ST_RUNNING) {
+            stopDotPulse();
+            return;
+        }
+        if (dotPulse != null) return; // sudah berdenyut
+        if (animScale() <= 0f) return; // hormati "hapus animasi"
+        android.graphics.drawable.Drawable[] ca =
+                statusBar.getCompoundDrawablesRelative();
+        if (ca == null || ca.length < 1 || ca[0] == null) return;
+        final android.graphics.drawable.Drawable dot = ca[0].mutate();
+        dotPulse = ValueAnimator.ofFloat(1f, 0.35f);
+        dotPulse.setDuration(900);
+        dotPulse.setRepeatCount(ValueAnimator.INFINITE);
+        dotPulse.setRepeatMode(ValueAnimator.REVERSE);
+        dotPulse.addUpdateListener(a -> dot.setAlpha(
+                Math.round((Float) a.getAnimatedValue() * 255f)));
+        dotPulse.start();
+    }
+
+    private void stopDotPulse() {
+        if (dotPulse != null) {
+            dotPulse.cancel();
+            dotPulse = null;
+            // pastikan dot kembali penuh (alpha bisa tertinggal rendah)
+            android.graphics.drawable.Drawable[] ca =
+                    statusBar.getCompoundDrawablesRelative();
+            if (ca != null && ca.length > 0 && ca[0] != null)
+                ca[0].mutate().setAlpha(255);
+        }
+    }
+
+    // Morph sudut tombol START<->STOP via MaterialShapeDrawable (lapisan
+    // 0 dari RippleDrawable bawaan MaterialButton): START = sudut tegas
+    // token large (8dp), STOP = pill (tinggi aktual / 2). Dihormati
+    // animScale; fallback diam + log sekali bila background bukan
+    // MaterialShapeDrawable - fitur dekoratif tidak boleh crash.
+    private void morphEngineButton(final MaterialButton btn, int st) {
+        if (animScale() <= 0f) return;
+        try {
+            android.graphics.drawable.Drawable bg = btn.getBackground();
+            MaterialShapeDrawable msd = null;
+            if (bg instanceof MaterialShapeDrawable) {
+                msd = (MaterialShapeDrawable) bg;
+            } else if (bg instanceof android.graphics.drawable.RippleDrawable) {
+                android.graphics.drawable.Drawable c =
+                        ((android.graphics.drawable.RippleDrawable) bg)
+                                .getDrawable(0);
+                if (c instanceof MaterialShapeDrawable) {
+                    msd = (MaterialShapeDrawable) c;
+                }
+            }
+            if (msd == null) return;
+            int hgt = btn.getHeight();
+            if (hgt <= 0) {
+                hgt = (int) (56 * getResources()
+                        .getDisplayMetrics().density);
+            }
+            float from = msd.getShapeAppearanceModel()
+                    .getTopRightCornerSize().getCornerSize(
+                            new android.graphics.RectF(0, 0,
+                                    btn.getWidth(), hgt));
+            float target = st == ST_RUNNING
+                    ? hgt / 2f
+                    : 8 * getResources().getDisplayMetrics().density;
+            ValueAnimator va = ValueAnimator.ofFloat(from, target);
+            va.setDuration(260);
+            va.addUpdateListener(a -> {
+                float r = (Float) a.getAnimatedValue();
+                msd.setShapeAppearanceModel(
+                        ShapeAppearanceModel.builder()
+                                .setAllCornerSizes(r)
+                                .build());
+            });
+            va.start();
+        } catch (Exception e) {
+            if (!msdWarned) {
+                msdWarned = true;
+                log(LV_DEBUG, "morph tombol dilewati: " + e.getMessage());
+            }
+        }
+    }
+
+    // Bounce spring halus saat tombol kembali aktif (state berubah).
+    // Di-guard animScale; dipicu hanya dari jalur fxChanged.
+    private void bounceEngine(final MaterialButton btn) {
+        if (animScale() <= 0f) return;
+        SpringForce f = new SpringForce()
+                .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
+                .setStiffness(SpringForce.STIFFNESS_LOW);
+        new SpringAnimation(btn, DynamicAnimation.SCALE_X, 1f)
+                .setSpring(f).setStartValue(0.92f).start();
+        new SpringAnimation(btn, DynamicAnimation.SCALE_Y, 1f)
+                .setSpring(f).setStartValue(0.92f).start();
     }
 
     // ---------- Pages ----------
@@ -1539,6 +1668,7 @@ public class MainActivity extends AppCompatActivity {
 
         headerStats = findViewById(R.id.headerStats);
         statusBar = findViewById(R.id.statusBar);
+        heroLoading = findViewById(R.id.heroLoading);
         logView = findViewById(R.id.logView);
         totalView = findViewById(R.id.totalView);
         verifyView = findViewById(R.id.verifyView);
@@ -1990,6 +2120,26 @@ public class MainActivity extends AppCompatActivity {
             if (vpnDropReceiver != null) unregisterReceiver(vpnDropReceiver);
         } catch (Exception ignored) {}
         super.onDestroy();
+    }
+
+    @Override
+    protected void onPause() {
+        // Fase 4 (revisi review): denyut dot tidak perlu saat activity
+        // tidak terlihat - hentikan agar tidak boros CPU/baterai.
+        stopDotPulse();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (engineState == ST_RUNNING) {
+            // pasang ulang dot lalu denyut lagi (drawable bisa
+            // tertinggal alpha rendah sebelum onPause)
+            statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                    R.drawable.ic_dot_green, 0, 0, 0);
+            updateDotPulse(ST_RUNNING);
+        }
     }
 
     private void runPingTest() {
