@@ -19,24 +19,29 @@
      Log (4/7): logFilter di TextInputLayout Widget.Wpmulti.TextField;
      copyLogBtn/clearLogBtn OutlinedButton; logLevel/logScroll/logView
      pindahan Task 1 tetap.
-     Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
-     BottomNavigationView (navHome/navSesi/navLog/navSetelan).
+     Kerangka 1/7: 4 halaman → BottomNavigationView
+     (navHome/navSesi/navLog/navSetelan).
+     Fase 2: root jadi FrameLayout; navbar = pill melayang Expressive
+     (FloatingToolbarLayout + BNV transparan 64dp) di bottom center.
+     Halaman diberi paddingBottom nav_pill_clearance (104dp) supaya
+     konten tidak tertutup pill (pill tinggi ±64dp + margin 12dp + jarak).
+     Inset tetap SEKALI di listener rootMain.
      Hotfix: MaterialToolbar placeholder (56dp, judul saja, tanpa id &
      tanpa rujukan Java) DIHAPUS - navigasi sudah ditangani bottom nav.
      Konten pertama kini mulai 12dp di bawah status bar (inset system
      bars diterapkan SEKALI di listener rootMain, MainActivity). -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <!-- Page container -->
+    <!-- Page container: mengisi seluruh frame; pill navbar melayang
+         DI ATAS konten (bottom|center) - karena itu semua halaman
+         diberi paddingBottom nav_pill_clearance. -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="match_parent">
 
         <!-- PAGE: HOME (hero + kartu VPN + kartu Monitor) — semua ID
              tetap ada untuk MainActivity. -->
@@ -44,7 +49,10 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp">
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -242,7 +250,10 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
@@ -390,7 +401,10 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="12dp"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
@@ -450,7 +464,10 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
@@ -674,12 +691,32 @@
 
     </FrameLayout>
 
-    <!-- Bottom navigation: 4 tab -->
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNav"
-        android:layout_width="match_parent"
+    <!-- Navbar pill melayang (M3 Expressive): FloatingToolbarLayout dari
+         material 1.14.0 - container pill full-round (ShapeAppearance.M3.
+         Comp.Toolbar.Floating.Container.Shape), bg surface container,
+         elevation token. CATATAN inset: listener rootMain mengembalikan
+         CONSUMED sehingga inset TIDAK menembak ke sini - attr
+         *SystemWindowInsets milik lib menjadi no-op; penanganan inset
+         sepenuhnya di listener rootMain (bukan lib). -->
+    <com.google.android.material.floatingtoolbar.FloatingToolbarLayout
+        style="@style/Widget.Material3.FloatingToolbar"
+        android:id="@+id/navPill"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:menu="@menu/bottom_nav"
-        app:labelVisibilityMode="labeled" />
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="12dp">
 
-</LinearLayout>
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            style="@style/Widget.Wpmulti.Nav"
+            android:id="@+id/bottomNav"
+            android:layout_width="wrap_content"
+            android:layout_height="64dp"
+            android:backgroundTint="@android:color/transparent"
+            android:elevation="0dp"
+            app:menu="@menu/bottom_nav"
+            app:labelVisibilityMode="labeled" />
+    </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>
+
+</FrameLayout>

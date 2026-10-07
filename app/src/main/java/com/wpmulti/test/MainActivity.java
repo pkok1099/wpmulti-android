@@ -273,16 +273,47 @@ public class MainActivity extends AppCompatActivity {
 
     // ---------- Pages ----------
     private int currentPage = R.id.pageHome;
+    // Fase 2: transisi halaman fade+slide. View yang sedang dianimasikan
+    // disimpan agar transisi berikutnya membatalkan yang lama (anti-race).
+    private View pageAnimView;
+
+    // Skala animator global (Setelan developer > skala animasi; 0 =
+    // "hapus animasi"): 0 -> animasi UI dilewati, langsung state final.
+    // Fallback 1f bila key tidak tersedia.
+    private float animScale() {
+        try {
+            return android.provider.Settings.Global.getFloat(
+                    getContentResolver(),
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                    1f);
+        } catch (Exception e) {
+            return 1f;
+        }
+    }
 
     // Overhaul UI 1/7: navigasi by-ID halaman (pageHome/pageSesi/pageLog/
     // pageSetting) — pengganti showPage(int idx) era navigasi drawer.
+    // Fase 2: halaman yang tampil diberi transisi fade+slide ringan
+    // (dilewati bila animator scale 0; transisi sebelumnya dibatalkan
+    // dulu agar tidak bertumpuk).
     private void showPage(int pageId) {
         currentPage = pageId;
         int[] pages = {R.id.pageHome, R.id.pageSesi, R.id.pageLog,
                 R.id.pageSetting};
+        View shown = null;
         for (int id : pages) {
-            findViewById(id).setVisibility(id == pageId ? View.VISIBLE
-                    : View.GONE);
+            View v = findViewById(id);
+            v.setVisibility(id == pageId ? View.VISIBLE : View.GONE);
+            if (id == pageId) shown = v;
+        }
+        if (pageAnimView != null) pageAnimView.animate().cancel();
+        if (shown != null && animScale() > 0f) {
+            pageAnimView = shown;
+            float d = getResources().getDisplayMetrics().density;
+            shown.setAlpha(0f);
+            shown.setTranslationY(16 * d);
+            shown.animate().alpha(1f).translationY(0f).setDuration(220)
+                    .start();
         }
         if (pageId == R.id.pageLog) renderLog(); // flush log yang tertunda saat masuk halaman Log
     }

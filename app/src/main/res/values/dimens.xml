@@ -7,4 +7,8 @@
     <dimen name="corner_small">4dp</dimen>
     <dimen name="corner_medium">6dp</dimen>
     <dimen name="corner_large">8dp</dimen>
+
+    <!-- Fase 2: jarak aman bawah halaman agar konten tidak tertutup pill
+         navbar (tinggi pill 64dp + margin 12dp + ruang napas). -->
+    <dimen name="nav_pill_clearance">104dp</dimen>
 </resources>
