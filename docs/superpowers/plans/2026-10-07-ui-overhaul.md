@@ -1,232 +1,210 @@
-# UI Overhaul (Rombak Total v2.0) Implementation Plan
+# UI Overhaul v2 — Komposisi Baru (Bukan Reskin) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rombak total permukaan UI wpmulti-test ke komponen Material 3 Expressive penuh (toolbar, kartu, textfield, row, chart, CTA) tanpa mengubah logika dan tanpa dependency baru.
+**Goal:** Mengganti total komposisi UI wpmulti-test — navigasi sidebar-drawer diganti Bottom Navigation 4 tab, halaman disusun ulang (hero kontrol + kartu fungsional) — tanpa mengubah logika bisnis dan tanpa dependency baru.
 
-**Architecture:** Semua perubahan = lapisan presentasi XML + spot-fix Java kecil (showPage, TrafficGraphView.init). Setiap `R.id` lama dipertahankan sehingga MainActivity 1917 baris tidak disentuh kecuali 2 fungsi. Identitas visual mengalir dari token yang sudah ada: sudut 4/6/8dp (dimens.xml), palet orkid (colors.xml light+night), tema M3E 2-lapis (themes.xml).
+**Architecture:** `activity_main.xml` ditulis ulang dari nol: MaterialToolbar + FrameLayout 4 halaman (Beranda/Sesi/Log/Setelan) + `BottomNavigationView`. Sidebar, scrim, btnMenu, menu item lama DIHAPUS (bukan dibungkus). MainActivity hanya berubah di blok navigasi (~60 baris: hapus openSidebar/closeSidebar, showPage jadi by-ID, wiring tab baru). Fitur dipetakan penuh via tabel di bawah — tidak ada fitur yang boleh hilang.
 
-**Tech Stack:** material 1.14.0 (sudah terpasang), AGP 8.13.2, compileSdk 36, minSdk 34 — TANPA dependency baru.
+**Tech Stack:** material 1.14.0 (sudah terpasang; BottomNavigationView + MaterialToolbar + MaterialCardView dari lib ini), AGP 8.13.2, compileSdk 36, minSdk 34 — TANPA dependency baru.
 
-**Spec:** Permintaan user sesi ini (verbatim): "terlalu round, buat kotak dengan sudut round kecil UI tegas dan elegant, ambil pallet color dari image tersebut, jangan lupa sidebar juga, icon (jangan gunakan emoji)" + "rombak total UI" + "pastikan selalu push setelah merubah sesuatu". Keputusan desain yang sudah dikunci sesi sebelumnya: sudut token 4/6/8dp; palet "Orkid Tegas" light `m3_primary #8D32AE` / night `m3_primary #E5A0E2`; sidebar custom bekerja (animasi 220ms + scrim + ripple) — dipertahankan, bukan dimigrasi.
+**Spec:** Permintaan user (verbatim): "saya ingin UI baru dan komposisi baru tanpa mengikuti UI dan komposisi lama, benar-benar baru" — REVISI dari plan v1 (8e74d7e) yang masih reskin. Konstrain yang tetap berlaku dari sesi: sudut token 4/6/8dp, palet "Orkid Tegas" (light `#8D32AE` / night `#E5A0E2`), zero emoji (vector only), "pastikan selalu push setelah merubah sesuatu", disiplin ponytail (material skill: `ponytail` full).
+
+## Peta Pemetaan Fitur (anti-fitur-hilang — SIFATNYA WAJIB)
+
+| Lokasi baru | ID yang wajib ada (dipakai Java) |
+|---|---|
+| **Beranda — Hero** | `statusBar`, `monGo`, `btnEngine` |
+| **Beranda — Kartu VPN** | `vpnStatus`, `vpnStats`, `vpnToggleBtn`, `pingTestBtn`, `pingResult` |
+| **Beranda — Kartu Monitor** | `trafficGraph`, `headerStats`, `monRam`, `monCpu`, `monCache`, `monSesi`, `monSesiDetail` |
+| **Sesi — Kartu Profil** | `totalView`, `configList`, `addBtn` |
+| **Sesi — Kartu Proxy** | `proxyTable`, `proxyStatus` (dashboard) |
+| **Sesi — Kartu Uji Proxy** | `testUrl`, `test1Btn`, `test20Btn`, `testResult`, `verifyView` |
+| **Log** (pindah apa adanya) | `logLevel`, `copyLogBtn`, `clearLogBtn`, `logFilter`, `logScroll`, `logView` |
+| **Setelan — Kartu VPN & Trafik** | `vpnDnsMode`, `vpnDnsServer`, `vpnIpMode`, `vpnAppMode`, `vpnPickAppsBtn`, `vpnAppCount`, `vpnPickIpModeBtn`, `vpnIpModeAppCount`, `vpnAutoReconnect`, `vpnSysSettingsBtn` |
+| **Setelan — Kartu Aplikasi** | `settingVer`, `settingDevice`, `settingPaths`, `exportLogBtn`, `clearCacheBtn` |
+| **Rows** (desain baru, ID tetap) | `label,minus,count,plus,max,del` / `proxyName,proxyAddr,proxyStatus,proxyCopy` |
+| **DIHAPUS dari komposisi & Java** | `btnMenu`, `scrim`, `sidebar`, `menuDashboard`, `menuSetting`, `menuLog`, `pageDashboard` (→ `pageHome`) |
 
 ## Global Constraints
 
-- TIDAK ADA dependency baru — hanya widget dari `com.google.android.material:material:1.14.0`.
-- Nol hex baru di layout: warna baru hanya lewat token `@color/m3_*` / `@color/sidebar_*` di colors.xml (light+night). Warna status semantik Java (`FF5252/FFD740/69F0AE` dst) tidak boleh diubah.
-- Semua `android:id="@+id/..."` lama WAJIB tetap ada dengan tipe yang compatible (EditText→TextInputEditText, Button→MaterialButton/legal turunannya) agar `findViewById` di MainActivity tidak rusak.
-- Sudut: semua komponen baru ikut token `@dimen/corner_{small,medium,large}` (4/6/8dp) via tema atau `Shape.Wpmulti.*` — dilarang menulis cornerSize literal di layout.
-- Zero emoji; icon hanya vector drawable.
-- Setiap Task diakhiri commit + push ke `main` + `wptest-v1.5` (instruksi eksplisit user: storage tidak persisten).
-- versionCode/versionName hanya disentuh di Task 7.
-- `ponytail:` skala sudut M3E bawaan (12dp+ pada Card/TextField) ditimpa style turunan — satu style per jenis komponen, bukan atribut berulang di tiap widget.
+- TIDAK ADA dependency baru; hanya widget material 1.14.0.
+- Nol hex baru di layout; warna hanya via token `@color/m3_*` / `@color/sidebar_*` (+ `m3_tertiary` baru di Task 5). Warna status semantik Java tidak diubah.
+- Sudut semua komponen ikut token 4/6/8dp (`Shape.Wpmulti.*` / style turunan) — dilarang cornerSize literal.
+- Zero emoji; icon vector drawable saja.
+- KOMPOSISI LAMA DIGANTI: sidebar-drawer + scrim + tombol hamburger tidak boleh ada sisa di layout maupun Java.
+- Setiap Task diakhiri commit + push ke `main` + `wptest-v1.5`.
+- versionCode/versionName hanya di Task 7.
 
 ## Review Focus
 
-1. **ID pindah ke inner EditText** saat migrasi TextInputLayout — kalau `@+id/testUrl` tertinggal di TextInputLayout (bukan inner), `findViewById` return bukan-EditText → NPE saat START. Pin: build lulus + grep ID di inner tag (Task 2 step verifikasi).
-2. **Spinner di atas kartu** — default M3E bisa render teks tak terbaca di background container. Pin: build + buka halaman Setting (Task 2).
-3. **showPage() di dark mode** — token harus di-resolve dari tema view saat itu, bukan konstanta. Pin: badging + inspeksi nilai token night (Task 4).
-4. **TrafficGraphView di light mode** — grid `0x33FFFFFF` putih-alpha tak terlihat di surface `#FFFAFC`. Pin: build + theme attr (Task 5).
-5. **Corner kartu & textfield** — style M3 default membawa radius 12dp+, melanggar constraint 4/6/8. Pin: style turunan dengan `Shape.Wpmulti.*` (Task 1 & 2).
+1. **Fitur hilang** — ID yang di-referensi `MainActivity` tapi tidak ada di layout baru → NPE runtime. Pin: script ID-diff (grep semua `R.id.` di Java vs semua `@+id/` di layout) di Task 6.
+2. **Semantik showPage** — `showPage(1)` lama = Setelan; komposisi baru salah map = klik tab buka halaman salah. Pin: Task 1 mengubah showPage jadi by-ID dan grep semua caller (baris 1614-1618 + lainnya) disesuaikan eksplisit.
+3. **Status text di hero** — Java `setTextColor` per status (merah `FF5252`/amber/hijau); di atas `colorPrimary` gelap kontras buruk → hero memakai `colorPrimaryContainer` agar semua warna status terbaca di light+night. Pin: Task 2 inspeksi.
+4. **Spinner/EditText di kartu** — keterbacaan default M3E di surface container. Pin: Task 3/4 build + halaman dibuka.
+5. **Grid TrafficGraphView** — `0x33FFFFFF` tak terlihat di surface terang. Pin: Task 5 theme attr.
 
 ---
 
-### Task 1: Toolbar M3 + kartu section dashboard
+### Task 1: Kerangka komposisi baru — Bottom Navigation 4 tab
 
 **Files:**
-- Modify: `app/src/main/res/layout/activity_main.xml` (topbar baris 14-41; tiga section dashboard)
-- Modify: `app/src/main/res/values/themes.xml` (+1 style turunan kartu)
-- Test: build + daftar ID
+- Rewrite: `app/src/main/res/layout/activity_main.xml` (kerangka: Toolbar + 4 FrameLayout + BottomNavigationView; `pageLog` & `pageSetting` pindah apa adanya dulu; `pageHome`/`pageSesi` stub TextView)
+- Create: `app/src/main/res/menu/bottom_nav.xml` (navHome/navSesi/navLog/navSetelan + icon + label)
+- Create: `app/src/main/res/drawable/ic_config.xml` (Material Symbols "tune"; tab Sesi)
+- Modify: `app/src/main/java/com/wpmulti/test/MainActivity.java` (blok navigasi saja)
 
 **Interfaces:**
-- Consumes: `@dimen/corner_large` (8dp), `Shape.Wpmulti.Large`, token `@color/m3_*` — sudah ada.
-- Produces: style `Widget.Wpmulti.Card` (MaterialCardView, corner_large, surface_container_high) — dipakai ulang Task 3 (row cards). ID `btnMenu`, `headerStats`, `statusBar` tetap hidup.
+- Consumes: tema M3E + token existing.
+- Produces: ID halaman `pageHome`, `pageSesi`, `pageLog`, `pageSetting`; menu id `navHome/navSesi/navLog/navSetelan`; fungsi `showPage(int pageId)` berbasis ID — dipakai semua task berikutnya.
 
-- [ ] **Step 1: Ganti topbar manual dengan MaterialToolbar**
+- [ ] **Step 1: Tulis kerangka activity_main.xml baru** — root LinearLayout vertikal: `MaterialToolbar` (style `Widget.Material3.Toolbar.OnSurface`, title "wpmulti-test", tanpa menu) → `FrameLayout` weight=1 berisi 4 child FrameLayout (`pageHome` stub, `pageSesi` stub, `pageLog` = konten lama baris 218-260 pindah apa adanya, `pageSetting` = konten lama baris 263-468 pindah apa adanya, hanya pageLog visible) → `BottomNavigationView` (`app:menu="@menu/bottom_nav"`, labelVisibilityMode labeled). TIDAK ADA scrim/sidebar/btnMenu.
 
-`com.google.android.material.appbar.MaterialToolbar` (style `Widget.Material3.Toolbar.OnSurface`) sebagai child pertama konten, dengan child LinearLayout berisi `btnMenu` (IconButton, app:icon ic_menu), judul `@+id/headerTitle` (textAppearance `TextAppearance.Material3.TitleLarge`), `headerStats`. ID Java yang ada (`btnMenu`, `headerStats`) tidak berubah fungsi.
+- [ ] **Step 2: Java — ganti blok navigasi.** Hapus `openSidebar()`+`closeSidebar()` (baris ~275-297) dan wiring sidebar (baris ~1608-1618). `showPage(int idx)` → `showPage(int pageId)` by-ID: visibility 4 halaman sesuai `pageId`. Wiring baru: `BottomNavigationView bnv = findViewById(R.id.bottomNav)` + `setOnItemSelectedListener`: navHome→`rebuildProxyTable(); updateVpnUi(); showPage(R.id.pageHome)`, navSesi→`rebuildProxyTable(); showPage(R.id.pageSesi)`, navLog→`showPage(R.id.pageLog)`, navSetelan→`showPage(R.id.pageSetting)`; return true. Grep semua caller `showPage(` lama dan samakan ke ID eksplisit (Review Focus #2). Inisialisasi akhir onCreate: `bnv.setSelectedItemId(R.id.navHome)`.
 
-- [ ] **Step 2: Buat style kartu di themes.xml**
+- [ ] **Step 3: Build + verifikasi nol sisa navigasi lama**
 
-```xml
-<style name="Widget.Wpmulti.Card" parent="Widget.Material3.CardView.Elevated">
-    <item name="shapeAppearance">@style/Shape.Wpmulti.Large</item>
-    <item name="cardBackgroundColor">@color/m3_surface_container_high</item>
-    <item name="contentPadding">12dp</item>
-</style>
-```
-
-- [ ] **Step 3: Bungkus 3 section dashboard dengan kartu**
-
-Section "Proxy" (proxyTable..testResult), "VPN (TUN)" (vpnStatus..pingResult), "Monitor" (monGo..monSesiDetail) masing-masing dibungkus `MaterialCardView` style `Widget.Wpmulti.Card`; heading TextView section jadi `TextAppearance.Material3.TitleMedium`. Semua ID child tak tersentuh.
-
-- [ ] **Step 4: Build + verifikasi ID lengkap**
-
-Run: `gradle assembleDebug` lalu script banding daftar `R.id` layout vs referensi `R.id.` di MainActivity.
-Expected: BUILD SUCCESSFUL; daftar ID identik; nol "unresolved reference".
-
-- [ ] **Step 5: Commit + push**
-
-```bash
-git add -A && git commit -m "refactor(ui): toolbar M3 + kartu section dashboard (overhaul 1/7)"
-git push origin HEAD:main HEAD:wptest-v1.5
-```
-
----
-
-### Task 2: TextField M3 untuk semua input
-
-**Files:**
-- Modify: `app/src/main/res/layout/activity_main.xml` (`testUrl`, `vpnDnsServer`, `logFilter`)
-- Modify: `app/src/main/res/values/themes.xml` (+1 style textfield)
-- Test: build + grep lokasi ID
-
-**Interfaces:**
-- Consumes: `Shape.Wpmulti.Small` (4dp) untuk box textfield.
-- Produces: style `Widget.Wpmulti.TextField` (TextInputLayout OutlinedBox, corner_small) — dipakai Task 2 saja.
-
-- [ ] **Step 1: Buat style textfield**
-
-```xml
-<style name="Widget.Wpmulti.TextField" parent="Widget.Material3.TextInputLayout.OutlinedBox">
-    <item name="shapeAppearance">@style/Shape.Wpmulti.Small</item>
-</style>
-```
-
-- [ ] **Step 2: Wrap 3 EditText**
-
-Masing-masing EditText dibungkus TextInputLayout style `Widget.Wpmulti.TextField` (hint pindah ke layout hint); `android:id` pindah ke EditText yang diganti kelas `TextInputEditText` (masih EditText-castable). `logFilter` hint "filter teks..." tetap.
-
-- [ ] **Step 3: Build + verifikasi ID ada di inner EditText**
-
-Run: `gradle assembleDebug`; `rg -n 'id/testUrl|id/vpnDnsServer|id/logFilter' layout` → masing-masing tepat 1 match, di tag `TextInputEditText`.
-Expected: BUILD SUCCESSFUL; 3 ID di inner field (Review Focus #1 tertutup).
+Run: `gradle assembleDebug`; `rg -n "btnMenu|scrim|sidebar|menuDashboard|menuSetting|menuLog|pageDashboard" app/src/main` → HARUS nol match.
+Expected: BUILD SUCCESSFUL; nol sisa.
 
 - [ ] **Step 4: Commit + push**
 
 ```bash
-git add -A && git commit -m "refactor(ui): TextInputLayout OutlinedBox utk testUrl/dnsServer/logFilter (overhaul 2/7)"
+git add -A && git commit -m "feat(ui)! komposisi baru: bottom nav 4 tab, sidebar drawer dihapus (overhaul 1/7)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
 ---
 
-### Task 3: Row components — row_config & row_proxy
+### Task 2: Halaman Beranda — hero + VPN + Monitor
 
 **Files:**
-- Create: `app/src/main/res/drawable/ic_minus.xml`, `ic_plus.xml`, `ic_close.xml`, `ic_content_copy.xml` (Material Symbols, path 24dp standar)
-- Modify: `app/src/main/res/layout/row_config.xml`, `row_proxy.xml`
-- Test: build
+- Modify: `app/src/main/res/layout/activity_main.xml` (isi `pageHome`)
+- Modify: `app/src/main/res/values/themes.xml` (+style `Widget.Wpmulti.Card`, `Widget.Wpmulti.HeroCard`)
 
 **Interfaces:**
-- Consumes: style `Widget.Wpmulti.Card` (dari Task 1); ID `label,count,minus,plus,max,del,proxyName,proxyAddr,proxyStatus,proxyCopy` tetap.
-- Produces: 4 vector icon (dipakai row; ic_close juga kandidat scrim tap).
+- Consumes: `Shape.Wpmulti.{Large,Medium}`; `pageHome` stub dari Task 1.
+- Produces: `Widget.Wpmulti.Card` (MaterialCardView corner_large + surface_container_high) — dipakai Task 3/4; `Widget.Wpmulti.HeroCard` (corner_large + `m3_primary_container` bg).
 
-- [ ] **Step 1: Buat 4 vector icon** (`ic_minus`, `ic_plus`, `ic_close`, `ic_content_copy`) — `android:fillColor="#FFFFFFFF"` (di-tint runtime), path Material Symbols resmi.
+- [ ] **Step 1: Hero card** — `Widget.Wpmulti.HeroCard`: `statusBar` (20sp bold, dot compound tetap mekanisme Java) + `monGo` (subtitle, onPrimaryContainer) + `btnEngine` (Widget.Material3.Button filled, 56dp, full-width, iconTint onPrimary).
 
-- [ ] **Step 2: Restyle row_config** — root jadi MaterialCardView `Widget.Wpmulti.Card` (contentPadding 4dp); `minus`/`plus`/`del` → `Widget.Material3.Button.IconButton` + `app:icon` (ic_minus/ic_plus/ic_close, iconTint `?attr/colorOnSurfaceVariant`); `max` → `Widget.Material3.Button.OutlinedButton`; `count` tetap EditText center 56dp.
+- [ ] **Step 2: Kartu VPN** — `Widget.Wpmulti.Card`: heading "VPN (TUN)" (TitleMedium) + `vpnStatus`, `vpnStats`, `vpnToggleBtn` (TonalButton + ic_play), `pingTestBtn` (OutlinedButton), `pingResult`.
 
-- [ ] **Step 3: Restyle row_proxy** — root MaterialCardView sama; `proxyCopy` → IconButton + `app:icon="@drawable/ic_content_copy"`; `proxyStatus` tetap TextView (warna status diset Java — jangan disentuh).
+- [ ] **Step 3: Kartu Monitor** — `Widget.Wpmulti.Card`: `trafficGraph` (120dp, di ATAS stat — komposisi baru: grafik dulu baru angka) + `headerStats` + `monRam/monCpu/monCache/monSesi` (2 kolom LinearLayout) + `monSesiDetail` (monospace 12sp).
 
-- [ ] **Step 4: Build + verifikasi**
+- [ ] **Step 4: Build + verifikasi ID Beranda**
 
-Run: `gradle assembleDebug` — `setEnabled`/`findViewById` pada row tetap valid (IconButton adalah Button).
+Run: `gradle assembleDebug`; grep ID peta baris "Beranda" (10 ID) masing-masing ≥1 di pageHome.
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 5: Commit + push**
 
 ```bash
-git add -A && git commit -m "refactor(ui): row_config/row_proxy jadi kartu + IconButton (overhaul 3/7)"
+git add -A && git commit -m "feat(ui): beranda hero+vpn+monitor komposisi baru (overhaul 2/7)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
 ---
 
-### Task 4: State halaman & sidebar pakai token
+### Task 3: Halaman Sesi — profil, proxy, uji + rows baru
 
 **Files:**
-- Modify: `app/src/main/java/com/wpmulti/test/MainActivity.java` (`showPage()` saja, baris ~301-310)
-- Modify: `app/src/main/res/layout/activity_main.xml` (statusBar pill)
-- Create: `app/src/main/res/drawable/bg_pill.xml`
-- Test: build
+- Modify: `app/src/main/res/layout/activity_main.xml` (isi `pageSesi`)
+- Rewrite: `app/src/main/res/layout/row_config.xml`, `row_proxy.xml` (ID tetap semua)
+- Create: `app/src/main/res/drawable/ic_minus.xml`, `ic_plus.xml`, `ic_close.xml`, `ic_content_copy.xml`
+- Modify: `app/src/main/res/values/themes.xml` (+`Widget.Wpmulti.TextField`)
 
 **Interfaces:**
-- Consumes: attr `colorPrimaryContainer`/`colorSurfaceContainerHighest` M3E; `corner_small`.
-- Produces: tidak ada (perbaikan state).
+- Consumes: `Widget.Wpmulti.Card`; ID rows tetap (Java `row.findViewById` aman).
+- Produces: `Widget.Wpmulti.TextField` (OutlinedBox + `Shape.Wpmulti.Small`) — dipakai Task 4.
 
-- [ ] **Step 1: showPage() resolve token dari tema**
+- [ ] **Step 1: Kartu Profil** (`totalView`, `configList`, `addBtn` = TonalButton + ic_plus? tidak — upload = `ic_config` tidak cocok; addBtn tanpa icon cukup) + **Kartu Proxy** (`proxyTable`, `proxyStatus`) + **Kartu Uji** (`testUrl` di `TextInputLayout` `Widget.Wpmulti.TextField` — id pindah ke inner `TextInputEditText`; `test1Btn`+`test20Btn` sebaris weight 1; `testResult`, `verifyView`).
 
-Ganti argumen `setBackgroundColor(...)` hardcoded pada item menu sidebar: selected = `MaterialColors.getColor(view, com.google.android.material.R.attr.colorPrimaryContainer)`, unselected = `Color.TRANSPARENT`; teks menu selected `colorOnPrimaryContainer`. Import `com.google.android.material.color.MaterialColors`.
+- [ ] **Step 2: row_config baru** — root MaterialCardView `Widget.Wpmulti.Card` (contentPadding 4dp, margin bawah 4dp); `minus`/`plus`/`del` → `Widget.Material3.Button.IconButton` + ic_minus/ic_plus/ic_close (iconTint onSurfaceVariant); `max` → OutlinedButton; `count` EditText center 56dp. ID semua tetap.
 
-- [ ] **Step 2: statusBar jadi pill**
+- [ ] **Step 3: row_proxy baru** — root MaterialCardView sama; `proxyName` (weight 1, medium), `proxyAddr` (monospace), `proxyStatus` (TextView — warna dari Java, jangan disentuh), `proxyCopy` → IconButton + ic_content_copy.
 
-`bg_pill.xml`: shape rounded `@dimen/corner_small`, solid `@color/m3_surface_container_high`. statusBar: `android:background="@drawable/bg_pill"` + margin 12dp.
+- [ ] **Step 4: Build + verifikasi ID Sesi & rows**
 
-- [ ] **Step 3: Build**
+Run: `gradle assembleDebug`; grep ID peta "Sesi" (10 ID) + rows (10 ID).
+Expected: BUILD SUCCESSFUL; `id/testUrl` tepat 1 match di `TextInputEditText` inner.
 
-Run: `gradle assembleDebug`.
-Expected: BUILD SUCCESSFUL (Review Focus #3: token di-resolve runtime, night ikut otomatis).
+- [ ] **Step 5: Commit + push**
+
+```bash
+git add -A && git commit -m "feat(ui): halaman sesi profil/proxy/uji + rows kartu-iconbutton (overhaul 3/7)"
+git push origin HEAD:main HEAD:wptest-v1.5
+```
+
+---
+
+### Task 4: Halaman Setelan & Log — konsistensi kartu
+
+**Files:**
+- Modify: `app/src/main/res/layout/activity_main.xml` (re-org `pageSetting`; polish `pageLog`)
+- Modify: `app/src/main/res/layout/` — `logFilter` wrap `Widget.Wpmulti.TextField`
+
+**Interfaces:**
+- Consumes: `Widget.Wpmulti.Card`, `Widget.Wpmulti.TextField`; semua ID peta "Setelan"/"Log" tetap.
+- Produces: tidak ada.
+
+- [ ] **Step 1: Setelan jadi 2 kartu** — "VPN & Trafik" (10 ID vpn*/`vpnAutoReconnect` + catatan 12sp) dan "Aplikasi" (`settingVer/settingDevice/settingPaths/exportLogBtn/clearCacheBtn`); heading TitleMedium; spinner & checkbox tidak dibungkus ulang (bawaan tema).
+
+- [ ] **Step 2: Log** — `logFilter` wrap TextField; `copyLogBtn`/`clearLogBtn` OutlinedButton; sisanya pindahan Task 1 dibiarkan.
+
+- [ ] **Step 3: Build + verifikasi ID Setelan/Log**
+
+Run: `gradle assembleDebug`; grep 15 ID Setelan + 6 ID Log.
+Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 4: Commit + push**
 
 ```bash
-git add -A && git commit -m "refactor(ui): state halaman & status pill pakai token tema (overhaul 4/7)"
+git add -A && git commit -m "feat(ui): setelan 2 kartu + log konsisten (overhaul 4/7)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
 ---
 
-### Task 5: TrafficGraphView theme-aware + palet orkid
+### Task 5: TrafficGraphView theme-aware + token tertiary
 
 **Files:**
 - Modify: `app/src/main/java/com/wpmulti/test/TrafficGraphView.java` (`init()` saja)
-- Modify: `app/src/main/res/values/colors.xml` + `values-night/colors.xml` (+1 token `m3_tertiary`)
-- Modify: `app/src/main/res/values/themes.xml` + `values-night/themes.xml` (+item `colorTertiary`)
-- Test: build
+- Modify: `values/colors.xml`, `values-night/colors.xml` (+`m3_tertiary`: light `#B331A2`, night `#FDB0F0` — klaster image)
+- Modify: `values/themes.xml`, `values-night/themes.xml` (+item `colorTertiary`)
 
 **Interfaces:**
-- Consumes: `MaterialColors.getColor(Context, attr)`; attr `colorOutline`, `colorOnSurfaceVariant`, `colorPrimary`, `colorTertiary`.
-- Produces: token `m3_tertiary` (light `#B331A2` klaster image; night `#FDB0F0` klaster image) — dipakai chart & kandidat aksen berikutnya.
+- Produces: token `m3_tertiary` — aksen kedua palet orkid.
 
-- [ ] **Step 1: Tambah token tertiary** (light `#B331A2`, night `#FDB0F0`) + item `colorTertiary` di kedua tema.
+- [ ] **Step 1: Token tertiary + item colorTertiary** di kedua tema.
 
-- [ ] **Step 2: init() baca attr tema**
+- [ ] **Step 2: init() baca attr tema** — helper `attr(a)` via `MaterialColors.getColor(getContext(), a)`: grid = colorOutline alpha 0x33, label = colorOnSurfaceVariant, RX = colorPrimary, TX = colorTertiary.
 
-Grid = `colorOutline` + alpha 0x33; label = `colorOnSurfaceVariant`; garis RX = `colorPrimary`; garis TX = `colorTertiary`. Satu helper `private int attr(int a)` memakai `MaterialColors.getColor(getContext(), a)`.
+- [ ] **Step 3: Build + push**
 
-- [ ] **Step 3: Build**
-
-Run: `gradle assembleDebug`.
-Expected: BUILD SUCCESSFUL (Review Focus #4 tertutup: grid gelap di light, terang di night).
-
-- [ ] **Step 4: Commit + push**
+Run: `gradle assembleDebug` → SUCCESSFUL (Review Focus #5 tertutup).
 
 ```bash
-git add -A && git commit -m "refactor(ui): TrafficGraphView theme-aware + token tertiary orkid (overhaul 5/7)"
+git add -A && git commit -m "feat(ui): grafik trafik theme-aware + token tertiary (overhaul 5/7)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
 ---
 
-### Task 6: Hierarki CTA
+### Task 6: Verifikasi menyeluruh anti-regresi
 
 **Files:**
-- Modify: `app/src/main/res/layout/activity_main.xml` (`btnEngine`, `vpnToggleBtn` saja)
-- Test: build
+- Create (sementara, tidak di-commit): `scripts/check_ids.py`
+- Test: ID-diff + build kedua varian
 
-**Interfaces:**
-- Consumes: style bawaan lib; Java `btnEngine` sudah MaterialButton + `setIconResource` (Task 20) — kompatibel.
+- [ ] **Step 1: Script ID-diff** — banding `R.id.X` dari `MainActivity.java` (plus row IDs) vs `@+id/` di semua layout. Expected: setiap R.id Java ada di layout, KECUALI daftar dihapus (`btnMenu, scrim, sidebar, menuDashboard, menuSetting, menuLog, pageDashboard`) yang juga harus nol di Java. Nol gap = lulus (Review Focus #1).
 
-- [ ] **Step 1: btnEngine jadi CTA filled**
+- [ ] **Step 2: Build debug + release** → SUCCESSFUL; badging masih versionCode 10 (bump di Task 7).
 
-style `Widget.Material3.Button` + `app:iconTint="?attr/colorOnPrimary"`; `vpnToggleBtn` eksplisit ke `Widget.Material3.Button.TonalButton` (kontras dgn CTA). Tombol lain tidak disentuh (default tonal dari tema).
-
-- [ ] **Step 2: Build + push**
-
-Run: `gradle assembleDebug` → BUILD SUCCESSFUL.
+- [ ] **Step 3: Commit (jika ada fix) + push**
 
 ```bash
-git add -A && git commit -m "refactor(ui): CTA START filled primary, vpnToggle tonal (overhaul 6/7)"
+git add -A && git commit -m "fix(ui): perbaikan hasil verifikasi ID menyeluruh (overhaul 6/7)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
@@ -236,30 +214,26 @@ git push origin HEAD:main HEAD:wptest-v1.5
 
 **Files:**
 - Modify: `app/build.gradle` (versionCode 11, versionName `'2.0'`), `README.md` (+baris 2.0)
-- Test: badging kedua APK
 
-- [ ] **Step 1: Bump versionCode 11 / versionName '2.0'** + README riwayat versi.
+- [ ] **Step 1: Bump + README** riwayat versi (komposisi baru: bottom nav, hero, kartu).
 
-- [ ] **Step 2: Build debug + release**
-
-Run: `gradle assembleDebug assembleRelease`.
-Expected: BUILD SUCCESSFUL; `aapt2 dump badging` = `versionCode='11' versionName='2.0'`.
+- [ ] **Step 2: Build debug + release** → `aapt2 dump badging` = `versionCode='11' versionName='2.0'`.
 
 - [ ] **Step 3: Commit + push**
 
 ```bash
-git add -A && git commit -m "release: v2.0 - rombak total UI M3E"
+git add -A && git commit -m "release: v2.0 - komposisi UI baru (bottom nav + hero)"
 git push origin HEAD:main HEAD:wptest-v1.5
 ```
 
-- [ ] **Step 4: Upload APK** ke `POST https://tmpfile.link/api/upload` (multipart `file`) + tulis worklog Task 22.
+- [ ] **Step 4: Upload APK** (`POST https://tmpfile.link/api/upload`, multipart `file`) + worklog Task 23.
 
 ---
 
 ## Self-Review
 
-1. **Spec coverage:** "rombak total" = 7 permukaan (toolbar/kartu/textfield/rows/state/chart/CTA) semua ada task-nya; "tegas & elegan" = constraint sudut 4/6/8 + palet orkid via token; "sidebar juga" = Task 4 state token; "icon no-emoji" = Task 3 vector; "push selalu" = step commit+push tiap task. ✓
-2. **Step scan:** tiap step = satu aksi checkable (edit dengan target eksak / build dengan expected / push). Tidak ada "TBD". ✓
-3. **Type consistency:** `Widget.Wpmulti.Card` dipakai Task 1 & 3; `Shape.Wpmulti.*` konsisten dengan themes.xml existing; `m3_tertiary` didefinisikan Task 5 dan hanya dipakai di sana; 4 nama icon Task 3 = yang direferensikan layout. ✓
-4. **Review Focus:** #1 → Task 2 step 3; #2 → Task 2 build (halaman Setting hidup); #3 → Task 4 step 1; #4 → Task 5 step 2; #5 → Task 1 step 2 & Task 2 step 1. ✓
-5. **Proportion:** plan ~1/3 panjang dari diff XML yang akan dihasilkan — bukan transcript. ✓
+1. **Spec coverage:** "komposisi benar-benar baru" = navigasi sidebar→bottom nav (Task 1), susunan halaman baru hero-first (Task 2), regroup fitur (Task 3/4), chart ikut komposisi (grafik-di-atas-stat); konstrain lama (sudut/palet/no-emoji/push) = Global Constraints. ✓
+2. **Step scan:** tiap step = satu aksi checkable dengan target & expected eksak. ✓
+3. **Type consistency:** `pageHome/pageSesi/pageLog/pageSetting` + `navHome/navSesi/navLog/navSetelan` konsisten Task 1→4; `Widget.Wpmulti.Card` Task 2→3/4; `Widget.Wpmulti.TextField` Task 3→4; `m3_tertiary` Task 5 sendiri; rows ID tetap. ✓
+4. **Review Focus:** #1→Task 6, #2→Task 1 step 2, #3→Task 2 step 1 (hero container), #4→Task 3/4 build, #5→Task 5. ✓
+5. **Proportion:** plan ±200 baris untuk rewrite layout ±550 baris — proporsional. ✓
