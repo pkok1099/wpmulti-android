@@ -53,7 +53,6 @@ app/                    # modul Android (Java, AIDL, manifest, konfigurasi)
 app/libs/wpmulti.aar    # engine Go PREBUILT — versi ter-patch 32KB (sumber kebenaran v1.5)
 app/libs/wpmulti-sources.jar
 wpmulti-go/             # GIT SUBMODULE → pkok1099/wpmulti (branch rebuild/v1.5-base)
-ram-patch-32k/          # patch source (format-patch) + script binary-patch libgojni.so
 ```
 
 ## Modul Go (`wpmulti-go/` — git submodule)
@@ -73,7 +72,7 @@ tanpa `replace` lokal — bisa di-build langsung.
 
 | Tahap | Isi | Status di v1.5 |
 |---|---|---|
-| 1 | Buffer relay go-socks5 **256KB → 32KB** (`bufferpool.NewPool`) — hemat ~40 MB pada ~185 buffer konkuren | **Aktif** (binary-patch `libgojni.so` + source) |
+| 1 | Buffer relay go-socks5 **256KB → 32KB** (`bufferpool.NewPool`) — hemat ~40 MB pada ~185 buffer konkuren | **Aktif** (AAR ter-patch + fix source di repo `wpmulti`) |
 | 2 | Analisis pool wireguard-go: `PreallocatedBuffersPerPool=4096 × 64KB` per device (~256 MB teoretis); usulan penurunan ke 256 — **laporan saja, tidak diterapkan** | Dokumen |
 | 3 | `debug.FreeOSMemory()` tiap 60 dtk saat TX/RX diam 3 interval berturut (monitor idle di `GoEngineService`) | **Aktif di Java**; penuh setelah AAR di-rebuild dari `wpmulti-go` |
 
