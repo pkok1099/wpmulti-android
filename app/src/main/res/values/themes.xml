@@ -65,4 +65,22 @@
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">@dimen/corner_large</item>
     </style>
+
+    <!-- Kartu fungsional (dipakai Beranda task 2, lalu Sesi/Setelan task
+         3/4): elevated + sudut token besar + surface_container_high.
+         Warna via @color resource → night otomatis dari values-night. -->
+    <style name="Widget.Wpmulti.Card" parent="Widget.Material3.CardView.Elevated">
+        <item name="shapeAppearance">@style/Shape.Wpmulti.Large</item>
+        <item name="cardBackgroundColor">@color/m3_surface_container_high</item>
+        <item name="contentPadding">12dp</item>
+    </style>
+
+    <!-- Kartu hero Beranda: bg colorPrimaryContainer (BUKAN colorPrimary)
+         agar warna status semantik yang di-set Java (merah FF5252/amber/
+         hijau pada statusBar) tetap terbaca di light+night. -->
+    <style name="Widget.Wpmulti.HeroCard" parent="Widget.Material3.CardView.Elevated">
+        <item name="shapeAppearance">@style/Shape.Wpmulti.Large</item>
+        <item name="cardBackgroundColor">@color/m3_primary_container</item>
+        <item name="contentPadding">16dp</item>
+    </style>
 </resources>

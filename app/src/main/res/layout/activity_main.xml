@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Overhaul UI 1/7: kerangka komposisi baru — MaterialToolbar + container
-     4 halaman (FrameLayout weight=1) + BottomNavigationView. Navigasi lama
-     berbasis drawer dihapus total; penggantinya menu bottom_nav.xml
-     (navHome/navSesi/navLog/navSetelan).
-     pageLog & pageSetting dipindah APA ADANYA dari layout lama.
-     pageHome sementara memuat konten dashboard lama (semua ID widget-nya
-     masih direferensikan MainActivity di luar blok navigasi, jadi stub
-     TextView akan memutus kompilasi); kontennya dibebaskan di task 2.
+<!-- Overhaul UI 2/7: Beranda komposisi baru — ScrollView berisi kolom
+     vertikal: HeroCard (statusBar + monGo + btnEngine) → Kartu VPN
+     (vpnStatus/vpnStats/vpnToggleBtn/pingTestBtn/pingResult) → Kartu
+     Monitor (trafficGraph di ATAS angka + headerStats + grid mon*/
+     monSesiDetail). Hero pakai bg colorPrimaryContainer (BUKAN colorPrimary)
+     agar warna status semantik Java (merah FF5252/amber/hijau) tetap
+     terbaca di light+night; teks hero = colorOnPrimaryContainer.
+     Kartu Proxy di bawah = kondisi TRANSISI: seluruh ID dashboard proxy
+     (proxyTable/proxyStatus/verifyView/testUrl/test1Btn/test20Btn/
+     testResult) masih direferensikan MainActivity & tidak ada di layout
+     lain, jadi harus tetap ada sampai Task 3 memindahkannya ke pageSesi.
+     Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
+     BottomNavigationView (navHome/navSesi/navLog/navSetelan).
      pageSesi masih stub (diisi task 3). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -28,199 +33,270 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- PAGE: HOME (konten dashboard lama, dipindah sementara) -->
-        <LinearLayout android:id="@+id/pageHome"
+        <!-- PAGE: HOME (hero + kartu VPN + kartu Monitor + kartu Proxy
+             transisi) — semua ID tetap ada untuk MainActivity. -->
+        <ScrollView android:id="@+id/pageHome"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical">
-
-            <!-- Status bar (persistent) -->
-            <TextView android:id="@+id/statusBar"
+            android:fillViewport="true"
+            android:padding="12dp">
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="BERHENTI"
-                android:drawableStart="@drawable/ic_dot_red"
-                android:drawablePadding="8dp"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:padding="10dp" />
+                android:orientation="vertical">
 
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:padding="12dp">
-                <LinearLayout
+                <!-- HERO: status + subtitle engine + START/STOP -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.HeroCard"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-                    <TextView android:id="@+id/headerStats"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end"
-                        android:text="RAM: - | CPU: -"
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Proxy"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                    <LinearLayout android:id="@+id/proxyTable"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingTop="8dp" />
-                    <TextView android:id="@+id/proxyStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Proxy SOCKS5/HTTP: tidak aktif" />
-                    <TextView android:id="@+id/verifyView"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="verifikasi: belum dites" />
-                    <EditText android:id="@+id/testUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="http://ifconfig.me/ip"
-                        android:hint="URL untuk dites"
-                        android:singleLine="true" />
+                    android:layout_height="wrap_content">
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginTop="8dp">
-                        <Button android:id="@+id/test1Btn"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="TEST 1x" />
-                        <Button android:id="@+id/test20Btn"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="8dp"
-                            android:text="TEST 20x" />
-                    </LinearLayout>
-                    <TextView android:id="@+id/testResult"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="VPN (TUN)"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Route seluruh trafik HP lewat proxy wpmulti (SOCKS5 127.0.0.1:1080). Butuh engine RUNNING."
-                        android:textSize="13sp"
-                        android:paddingBottom="8dp" />
-                    <TextView android:id="@+id/vpnStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="VPN (TUN): tidak dipakai"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <TextView android:id="@+id/vpnStats"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textSize="13sp"
-                        android:padding="4dp" />
-                    <Button android:id="@+id/vpnToggleBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="CONNECT VPN"
-                        app:icon="@drawable/ic_play"
-                        app:iconGravity="textStart"
-                        app:iconPadding="10dp"
-                        app:iconTint="?attr/colorPrimary"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                    <Button android:id="@+id/pingTestBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="TEST PING" />
-                    <TextView android:id="@+id/pingResult"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textSize="13sp"
-                        android:padding="4dp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="Monitor"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                    <TextView android:id="@+id/monGo"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="wpmulti: -"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <TextView android:id="@+id/monRam"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="RAM: -"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <TextView android:id="@+id/monCpu"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="CPU: -"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <TextView android:id="@+id/monCache"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Cache: -"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <TextView android:id="@+id/monSesi"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Sesi: -"
-                        android:textSize="14sp"
-                        android:padding="4dp" />
-                    <com.wpmulti.test.TrafficGraphView
-                        android:id="@+id/trafficGraph"
-                        android:layout_width="match_parent"
-                        android:layout_height="120dp"
-                        android:layout_marginTop="8dp" />
-                    <TextView android:id="@+id/monSesiDetail"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:textSize="12sp"
-                        android:typeface="monospace"
-                        android:padding="4dp" />
-                </LinearLayout>
-            </ScrollView>
+                        android:orientation="vertical">
 
-            <!-- START/STOP toggle (persistent) -->
-            <Button android:id="@+id/btnEngine"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="16dp"
-                android:text="START"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                app:icon="@drawable/ic_play"
-                app:iconGravity="textStart"
-                app:iconPadding="10dp"
-                app:iconTint="?attr/colorPrimary" />
-        </LinearLayout>
+                        <TextView android:id="@+id/statusBar"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="BERHENTI"
+                            android:drawableStart="@drawable/ic_dot_red"
+                            android:drawablePadding="8dp"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:gravity="center"
+                            android:textColor="?attr/colorOnPrimaryContainer" />
+
+                        <TextView android:id="@+id/monGo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="wpmulti: -"
+                            android:textSize="13sp"
+                            android:gravity="center"
+                            android:textColor="?attr/colorOnPrimaryContainer" />
+
+                        <Button android:id="@+id/btnEngine"
+                            style="@style/Widget.Material3.Button"
+                            android:layout_width="match_parent"
+                            android:layout_height="56dp"
+                            android:layout_marginTop="12dp"
+                            android:text="START"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            app:icon="@drawable/ic_play"
+                            app:iconGravity="textStart"
+                            app:iconPadding="10dp"
+                            app:iconTint="?attr/colorOnPrimary" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU VPN (TUN) -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="VPN (TUN)"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Route seluruh trafik HP lewat proxy wpmulti (SOCKS5 127.0.0.1:1080). Butuh engine RUNNING."
+                            android:textSize="13sp"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <TextView android:id="@+id/vpnStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="VPN (TUN): tidak dipakai"
+                            android:textSize="14sp" />
+                        <TextView android:id="@+id/vpnStats"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text=""
+                            android:textSize="13sp" />
+
+                        <Button android:id="@+id/vpnToggleBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="CONNECT VPN"
+                            app:icon="@drawable/ic_play"
+                            app:iconGravity="textStart"
+                            app:iconPadding="10dp"
+                            app:iconTint="?attr/colorPrimary" />
+                        <Button android:id="@+id/pingTestBtn"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="TEST PING" />
+                        <TextView android:id="@+id/pingResult"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text=""
+                            android:textSize="13sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU MONITOR: grafik dulu, baru angka (komposisi baru) -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Monitor"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <com.wpmulti.test.TrafficGraphView
+                            android:id="@+id/trafficGraph"
+                            android:layout_width="match_parent"
+                            android:layout_height="120dp"
+                            android:layout_marginTop="8dp" />
+                        <TextView android:id="@+id/headerStats"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="end"
+                            android:layout_marginTop="4dp"
+                            android:text="RAM: - | CPU: -"
+                            android:textSize="12sp"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+                            <TextView android:id="@+id/monRam"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="RAM: -"
+                                android:textSize="14sp" />
+                            <TextView android:id="@+id/monCpu"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="CPU: -"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="4dp">
+                            <TextView android:id="@+id/monCache"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Cache: -"
+                                android:textSize="14sp" />
+                            <TextView android:id="@+id/monSesi"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Sesi: -"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+
+                        <TextView android:id="@+id/monSesiDetail"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textSize="12sp"
+                            android:typeface="monospace" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU PROXY (TRANSISI — dipindah ke pageSesi di task 3;
+                     ID wajib tetap ada karena direferensikan MainActivity) -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Proxy"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <LinearLayout android:id="@+id/proxyTable"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingTop="8dp" />
+                        <TextView android:id="@+id/proxyStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Proxy SOCKS5/HTTP: tidak aktif"
+                            android:textSize="14sp" />
+                        <TextView android:id="@+id/verifyView"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="verifikasi: belum dites"
+                            android:textSize="13sp" />
+                        <EditText android:id="@+id/testUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="http://ifconfig.me/ip"
+                            android:hint="URL untuk dites"
+                            android:singleLine="true" />
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+                            <Button android:id="@+id/test1Btn"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="TEST 1x" />
+                            <Button android:id="@+id/test20Btn"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="8dp"
+                                android:text="TEST 20x" />
+                        </LinearLayout>
+                        <TextView android:id="@+id/testResult"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text=""
+                            android:textSize="13sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </ScrollView>
 
         <!-- PAGE: SESI (stub — diisi task 3) -->
         <FrameLayout android:id="@+id/pageSesi"
