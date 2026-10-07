@@ -505,7 +505,7 @@
             android:text="wpmulti-test"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="#FFFFFFFF"
+            android:textColor="@color/sidebar_text"
             android:padding="20dp" />
         <View
             android:layout_width="match_parent"
@@ -520,7 +520,7 @@
             android:drawablePadding="12dp"
             android:gravity="center_vertical"
             android:textSize="16sp"
-            android:textColor="#FFFFFFFF"
+            android:textColor="@color/sidebar_text"
             android:padding="16dp" />
         <TextView android:id="@+id/menuSetting"
             android:layout_width="match_parent"
@@ -531,7 +531,7 @@
             android:drawablePadding="12dp"
             android:gravity="center_vertical"
             android:textSize="16sp"
-            android:textColor="#FFFFFFFF"
+            android:textColor="@color/sidebar_text"
             android:padding="16dp" />
         <TextView android:id="@+id/menuLog"
             android:layout_width="match_parent"
@@ -542,7 +542,7 @@
             android:drawablePadding="12dp"
             android:gravity="center_vertical"
             android:textSize="16sp"
-            android:textColor="#FFFFFFFF"
+            android:textColor="@color/sidebar_text"
             android:padding="16dp" />
     </LinearLayout>
 

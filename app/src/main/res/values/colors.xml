@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#101828</color>
+    <color name="ic_launcher_background">#48227E</color>
 
     <!-- Token tema-invariant (sama di light/night): scrim overlay + sidebar
-         gelap permanen. -->
+         gelap permanen. Sidebar kini violet gelap (klaster #48227E image
+         digelapkan) dengan divider tint orkid #C281D2. -->
     <color name="scrim">#80000000</color>
-    <color name="sidebar_bg">#FF1E1E1E</color>
-    <color name="sidebar_divider">#33FFFFFF</color>
+    <color name="sidebar_bg">#FF261632</color>
+    <color name="sidebar_divider">#38C281D2</color>
+    <color name="sidebar_text">#FFF7FC</color>
 
-    <!-- Palet M3 Expressive - skema netral-cool dengan primary navy
-         (identitas launcher #101828). Nilai night ada di values-night. -->
-    <color name="m3_primary">#101828</color>
+    <!-- Palet M3 Expressive "Orkid Tegas" - diekstrak dari image referensi
+         (anime orkid-magenta). Nilai langsung dari klaster dominan:
+         primary #8D32AE, container #FFDAF3, on_container #48227E,
+         surface_container #FDEAF2. Turunan terkontrol: surface #FFFAFC,
+         teks sekunder #5C4E63, outline #867390 (kontras teks >= 4.5:1).
+         Nilai night ada di values-night. -->
+    <color name="m3_primary">#8D32AE</color>
     <color name="m3_on_primary">#FFFFFF</color>
-    <color name="m3_primary_container">#D8E2F4</color>
-    <color name="m3_on_primary_container">#0E1A2B</color>
-    <color name="m3_surface">#FFFFFF</color>
-    <color name="m3_surface_container_high">#E4E7EC</color>
-    <color name="m3_on_surface_variant">#454A54</color>
-    <color name="m3_outline">#767C89</color>
+    <color name="m3_primary_container">#FFDAF3</color>
+    <color name="m3_on_primary_container">#48227E</color>
+    <color name="m3_surface">#FFFAFC</color>
+    <color name="m3_surface_container_high">#FDEAF2</color>
+    <color name="m3_on_surface_variant">#5C4E63</color>
+    <color name="m3_outline">#867390</color>
 </resources>
