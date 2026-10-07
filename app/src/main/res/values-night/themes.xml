@@ -13,6 +13,7 @@
         <item name="colorSurfaceContainerHighest">@color/m3_surface_container_high</item>
         <item name="colorOnSurfaceVariant">@color/m3_on_surface_variant</item>
         <item name="colorOutline">@color/m3_outline</item>
+        <item name="colorTertiary">@color/m3_tertiary</item>
 
         <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
 

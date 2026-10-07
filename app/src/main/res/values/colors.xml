@@ -16,4 +16,7 @@
     <color name="m3_surface_container_high">#FDEAF2</color>
     <color name="m3_on_surface_variant">#5C4E63</color>
     <color name="m3_outline">#867390</color>
+    <!-- Tertiary: aksen kedua palet orkid (klaster magenta image),
+         dipakai grafik trafik (garis TX). -->
+    <color name="m3_tertiary">#B331A2</color>
 </resources>

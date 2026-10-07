@@ -17,6 +17,7 @@
         <item name="colorSurfaceContainerHighest">@color/m3_surface_container_high</item>
         <item name="colorOnSurfaceVariant">@color/m3_on_surface_variant</item>
         <item name="colorOutline">@color/m3_outline</item>
+        <item name="colorTertiary">@color/m3_tertiary</item>
 
         <!-- Tombol default tonal (abu, mendekati karakter lama), bukan
              filled - hierarki primary bisa ditambah eksplisit nanti -->

@@ -11,4 +11,7 @@
     <color name="m3_surface_container_high">#312439</color>
     <color name="m3_on_surface_variant">#D3C0D8</color>
     <color name="m3_outline">#9B85A3</color>
+    <!-- Tertiary night: aksen kedua palet orkid, versi terang agar
+         tetap terbaca di surface ungu-hitam. -->
+    <color name="m3_tertiary">#FDB0F0</color>
 </resources>

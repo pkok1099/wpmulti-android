@@ -6,10 +6,15 @@ import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.view.View;
 
+import androidx.core.graphics.ColorUtils;
+
+import com.google.android.material.color.MaterialColors;
+
 /**
- * Grafik trafik real-time (RX hijau, TX biru).
- * Ring buffer 60 sampel; tiap addSample(rxBytes, txBytes) menggeser.
- * Digambar sebagai line chart dengan skala otomatis.
+ * Grafik trafik real-time (RX colorPrimary, TX colorTertiary - ikut tema
+ * light/night palet orkid). Ring buffer 60 sampel; tiap
+ * addSample(rxBytes, txBytes) menggeser. Digambar sebagai line chart
+ * dengan skala otomatis.
  */
 public class TrafficGraphView extends View {
     private static final int CAP = 60;
@@ -33,18 +38,28 @@ public class TrafficGraphView extends View {
     }
 
     private void init() {
-        rxPaint.setColor(0xFF69F0AE);
+        // Warna ikut tema (palet orkid light/night). colorPrimary
+        // dideklarasikan appcompat; attr M3 lain via material R.
+        // Tidak ada hex hardcoded di sini.
+        rxPaint.setColor(attr(androidx.appcompat.R.attr.colorPrimary));
         rxPaint.setStrokeWidth(3f);
         rxPaint.setStyle(Paint.Style.STROKE);
         rxPaint.setAntiAlias(true);
-        txPaint.setColor(0xFF40C4FF);
+        txPaint.setColor(attr(com.google.android.material.R.attr.colorTertiary));
         txPaint.setStrokeWidth(3f);
         txPaint.setStyle(Paint.Style.STROKE);
         txPaint.setAntiAlias(true);
-        gridPaint.setColor(0x33FFFFFF);
+        gridPaint.setColor(ColorUtils.setAlphaComponent(
+                attr(com.google.android.material.R.attr.colorOutline), 0x33));
         gridPaint.setStrokeWidth(1f);
-        textPaint.setColor(0xFFAAAAAA);
+        textPaint.setColor(attr(com.google.android.material.R.attr.colorOnSurfaceVariant));
         textPaint.setTextSize(24f);
+    }
+
+    /** Resolve warna attr tema aktif; aman dipanggil dari constructor
+     *  (resolusi murni via context theme, tanpa perlu view ter-attach). */
+    private int attr(int a) {
+        return MaterialColors.getColor(this, a);
     }
 
     /** Tambah sampel (byte kumulatif); dihitung delta per detik oleh caller. */
