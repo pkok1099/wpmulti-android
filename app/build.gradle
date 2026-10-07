@@ -69,6 +69,10 @@ android {
 
 dependencies {
     implementation files('libs/wpmulti.aar')
+    // Material 3 Expressive (1.14.0 stable). Menarik androidx transitif
+    // (appcompat 1.7.0, core 1.16.0, activity 1.8.0, dst) - dipangkas
+    // oleh R8+shrinkResources di release.
+    implementation 'com.google.android.material:material:1.14.0'
     implementation 'tech.kwik:kwik:0.8.13'
     debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
 }
