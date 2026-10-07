@@ -54,6 +54,13 @@
     <color name="glitch_shadow_cyan">#9922D3EE</color>
     <color name="glitch_white">#E6F6FF</color>
 
+    <!-- GlitchText (Task 32, "banyak tapi tipis"): ghost BASELINE red 20%
+         utk SEMUA TextView (kesan misregister permanen tanpa penebal) dan
+         blok datamosh acid 20% (BackgroundColorSpan sesaat saat wander
+         burst). Keduanya turunan palet existing - tanpa hue baru. -->
+    <color name="glitch_shadow_thin">#33FF3355</color>
+    <color name="glitch_block">#33D4FF3F</color>
+
     <!-- Sweep abu-abu netral M3 (cy3): keluarga surfaceContainer yang
          tidak ikut remap cy1 masih memakai default lib (neutral gray
          #1D1B20 dst) - terlihat sbg "box abu-abu" di komponen lib

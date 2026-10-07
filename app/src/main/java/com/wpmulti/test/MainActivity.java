@@ -991,6 +991,7 @@ public class MainActivity extends AppCompatActivity {
             Profile pr = profiles.get(i);
             View row = LayoutInflater.from(this)
                     .inflate(R.layout.row_config, configContainer, false);
+            GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
             ((TextView) row.findViewById(R.id.label)).setText(pr.name);
             EditText et = row.findViewById(R.id.count);
             et.setText(String.valueOf(pr.count));
@@ -1096,6 +1097,7 @@ public class MainActivity extends AppCompatActivity {
     private void addProxyRow(String name, String addr, boolean running) {
         View row = LayoutInflater.from(this)
                 .inflate(R.layout.row_proxy, proxyTable, false);
+        GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
         ((TextView) row.findViewById(R.id.proxyName)).setText(name);
         ((TextView) row.findViewById(R.id.proxyAddr)).setText(addr);
         ((TextView) row.findViewById(R.id.proxyStatus))
@@ -1370,6 +1372,7 @@ public class MainActivity extends AppCompatActivity {
                             R.layout.row_session, monSesiDetail, false);
                     chipViews.put(idx, chip);
                     monSesiDetail.addView(chip);
+                    GlitchText.registerTree(chip); // Task 32: chip sesi ikut wander
                     final TextView detailCh =
                             chip.findViewById(R.id.chipDetail);
                     chip.setOnClickListener(v -> {
@@ -1773,6 +1776,10 @@ public class MainActivity extends AppCompatActivity {
         float gShadowD = getResources().getDisplayMetrics().density;
         statusBar.setShadowLayer(1f * gShadowD, 3f * gShadowD, 0f,
                 getColor(R.color.glitch_shadow));
+        // Task 32: daftarkan ghost kustom ini sbg baseline di GlitchText
+        // supaya wander burst tidak menghapusnya saat restore.
+        GlitchText.registerCustom(statusBar, 3f * gShadowD,
+                getColor(R.color.glitch_shadow));
         heroLoading = findViewById(R.id.heroLoading);
         logView = findViewById(R.id.logView);
         hudToast = findViewById(R.id.hudToast);
@@ -1784,6 +1791,9 @@ public class MainActivity extends AppCompatActivity {
         // Glitchcore: sisi C dari pasangan chromatic - ghost cyan offset
         // KIRI di subtitle engine (kebalikan arah ghost merah statusBar).
         monGo.setShadowLayer(1f * gShadowD, -2f * gShadowD, 0f,
+                getColor(R.color.glitch_shadow_cyan));
+        // Task 32: baseline cyan kiri juga dipelihara via GlitchText.
+        GlitchText.registerCustom(monGo, -2f * gShadowD,
                 getColor(R.color.glitch_shadow_cyan));
         monCpu = findViewById(R.id.monCpu);
         monCache = findViewById(R.id.monCache);
@@ -1941,6 +1951,12 @@ public class MainActivity extends AppCompatActivity {
         proxyTable = findViewById(R.id.proxyTable);
         logFilter = findViewById(R.id.logFilter);
         logLevel = findViewById(R.id.logLevel);
+
+        // Task 32 (GlitchText "banyak tapi tipis"): daftarkan SELURUH
+        // TextView di bawah rootMain (dashboard, sesi, log, setelan) ke
+        // mesin glitch - ghost tipis baseline + wander burst span neon.
+        // Input user (EditText) dan logView span dikecualikan di dalamnya.
+        GlitchText.registerTree(findViewById(R.id.rootMain));
 
         // bottom navigation (4 tab) — pengganti navigasi drawer lama
         BottomNavigationView bnv = findViewById(R.id.bottomNav);
@@ -2227,12 +2243,18 @@ public class MainActivity extends AppCompatActivity {
         // Fase 4 (revisi review): denyut dot tidak perlu saat activity
         // tidak terlihat - hentikan agar tidak boros CPU/baterai.
         stopDotPulse();
+        // Task 32: loop wander GlitchText berhenti + semua kilatan
+        // dipulihkan saat activity tidak terlihat (hemat CPU/baterai).
+        GlitchText.stop();
         super.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        // Task 32: nyalakan lagi wander glitch (registry dipertahankan;
+        // ref mati di-purge di dalam start()).
+        GlitchText.start(this);
         if (engineState == ST_RUNNING) {
             // pasang ulang dot lalu denyut lagi (drawable bisa
             // tertinggal alpha rendah sebelum onPause)
