@@ -123,6 +123,17 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- Glitchcore: pembatas scanline dashed (cyan 30%) -
+                     penanda ritme HUD antara hero dan kartu VPN; 2dp agar
+                     dash di tengah bounds tidak terpotong, software layer
+                     demi render dash konsisten di hardware accel. -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
+
                 <!-- KARTU VPN (TUN) -->
                 <com.google.android.material.card.MaterialCardView
                     style="@style/Widget.Wpmulti.Card"

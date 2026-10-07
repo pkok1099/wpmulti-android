@@ -1716,6 +1716,13 @@ public class MainActivity extends AppCompatActivity {
 
         headerStats = findViewById(R.id.headerStats);
         statusBar = findViewById(R.id.statusBar);
+        // Glitchcore: ghost RGB-split - bayangan merah 60% offset 2dp ke
+        // kanan, blur tipis 1dp (tanpa custom view/blur). Warna teks status
+        // tetap berubah via status_*; ghost merah di belakangnya tetap
+        // konsisten sebagai sisi R dari pasangan chromatic (vs cyan UI).
+        float gShadowD = getResources().getDisplayMetrics().density;
+        statusBar.setShadowLayer(1f * gShadowD, 2f * gShadowD, 0f,
+                getColor(R.color.glitch_shadow));
         heroLoading = findViewById(R.id.heroLoading);
         logView = findViewById(R.id.logView);
         totalView = findViewById(R.id.totalView);

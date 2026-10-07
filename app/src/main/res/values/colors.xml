@@ -30,10 +30,21 @@
 
     <!-- Warna status semantik - dipakai Java via getColor(); sebelumnya
          literal 0xFF... tersebar di MainActivity. Neon di atas kanvas
-         gelap; status_gray = "off" (steel dim, tetap >= 7:1 vs surface). -->
-    <color name="status_red">#FF5252</color>
+         gelap; status_gray = "off" (steel dim, tetap >= 7:1 vs surface).
+         status_red memakai merah glitch #FF3355 (bukan material red):
+         lebih tajam di kanvas near-black, sekaligus jadi sisi R dari
+         pasangan chromatic aberration (vs primary cyan). -->
+    <color name="status_red">#FF3355</color>
     <color name="status_amber">#FFD740</color>
     <color name="status_green">#69F0AE</color>
     <color name="status_coral">#FF8A80</color>
     <color name="status_gray">#8FA3B8</color>
+
+    <!-- Aksen Glitchcore (fusi cy2) - trik HUD tanpa blur/custom view:
+         glitch_scan = garis scanline dashed cyan 30% (divider antar
+         kartu), glitch_shadow = ghost merah 60% utk RGB-split shadow
+         statusBar (setShadowLayer dx 2dp). Keduanya turunan palet yang
+         sudah ada - tidak menambah hue baru di luar cyan/magenta/red. -->
+    <color name="glitch_scan">#4D22D3EE</color>
+    <color name="glitch_shadow">#99FF3355</color>
 </resources>
