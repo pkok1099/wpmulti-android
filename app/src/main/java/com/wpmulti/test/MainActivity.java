@@ -85,10 +85,22 @@ public class MainActivity extends AppCompatActivity {
     private TextView totalView;
     private TextView verifyView;
     private TextView testResult;
-    private TextView monRam, monCpu, monCache, monSesi, monSesiDetail, monGo;
+    private TextView monRam, monCpu, monCache, monSesi, monGo;
+    // Fase 3: throughput = angka besar + total per arah; monSesiDetail
+    // kini CONTAINER chip sesi (LinearLayout), bukan TextView monospace.
+    private TextView monRx, monTx, monRxTotal, monTxTotal;
+    private LinearLayout monSesiDetail;
     private TrafficGraphView trafficGraph;
     // total sesi sebelumnya (untuk hitung rate per detik)
     private long prevSessTx = -1, prevSessRx = -1, prevSessT = 0;
+    // Fase 3 (revisi review): chip sesi di-update IN-PLACE (tanpa inflate
+    // ulang per tick) dan status expand per sesi dipersist di expandedSess
+    // - dulu rebuild tiap 2 dtk membuat detail yang di-expand kolap
+    // sendiri. prevSessAct = total tx+rx tick lalu, untuk mendeteksi
+    // sesi yang aktif mengirim/menerima.
+    private final java.util.Map<Integer, View> chipViews = new java.util.HashMap<>();
+    private final java.util.Set<Integer> expandedSess = new java.util.HashSet<>();
+    private final java.util.Map<Integer, Long> prevSessAct = new java.util.HashMap<>();
 
     private TextView vpnStatusView, vpnStatsView;
     private TextView proxyStatusView; // label "Proxy SOCKS5/HTTP: aktif/tidak aktif"
@@ -344,8 +356,11 @@ public class MainActivity extends AppCompatActivity {
                 vpnStatsView.setText("koneksi TCP: " + VpnEngine.connCount()
                         + "\nRX: " + fmtBytes(VpnEngine.bytesRx())
                         + " | TX: " + fmtBytes(VpnEngine.bytesTx()));
+                vpnStatsView.setVisibility(View.VISIBLE);
             } else {
                 vpnStatsView.setText("");
+                // Fase 3: teks kosong tidak menyisakan ruang kosong.
+                vpnStatsView.setVisibility(View.GONE);
             }
             vpnToggleBtn.setText(vpnOn ? "DISCONNECT VPN"
                     : "CONNECT VPN");
@@ -1088,32 +1103,20 @@ public class MainActivity extends AppCompatActivity {
                 final String fSys = "sistem " + (totalMb - availMb) + "/" + totalMb + " MB";
                 final String fCache = "cache: " + cacheKb + " KB";
                 // Statistik per sesi dari GET_STATUS (JSON via binder).
+                // Fase 3: baris teks "#0 hs=- tx=0 B rx=0 B" diganti chip
+                // (rebuildSessionChips); di sini cukup total + array-nya.
                 long sessTx = 0, sessRx = 0;
                 int nSess = 0;
-                StringBuilder sessDetail = new StringBuilder();
+                org.json.JSONArray arr = null;
                 try {
-                    org.json.JSONArray arr = new org.json.JSONArray(
+                    arr = new org.json.JSONArray(
                             es.sessionStats == null ? "[]" : es.sessionStats);
                     nSess = arr.length();
-                    int show = Math.min(nSess, 20);
                     for (int i = 0; i < nSess; i++) {
                         org.json.JSONObject o = arr.getJSONObject(i);
-                        long tx = o.optLong("tx_bytes");
-                        long rx = o.optLong("rx_bytes");
-                        sessTx += tx;
-                        sessRx += rx;
-                        if (i < show) {
-                            long hs = o.optLong("handshake_age_sec", -1);
-                            sessDetail.append(String.format(
-                                    "#%d hs=%s tx=%s rx=%s\n",
-                                    o.optInt("index", i),
-                                    hs < 0 ? "-" : hs + "s",
-                                    fmtBytes(tx), fmtBytes(rx)));
-                        }
+                        sessTx += o.optLong("tx_bytes");
+                        sessRx += o.optLong("rx_bytes");
                     }
-                    if (nSess > show)
-                        sessDetail.append("+").append(nSess - show)
-                                .append(" sesi lain");
                 } catch (Exception ignored) {}
                 long rateTx = 0, rateRx = 0;
                 if (prevSessT > 0 && curTime > prevSessT) {
@@ -1126,25 +1129,100 @@ public class MainActivity extends AppCompatActivity {
                 prevSessTx = sessTx;
                 prevSessRx = sessRx;
                 prevSessT = curTime;
-                final String fSesi = "sesi aktif: " + nSess
-                        + " | TX " + fmtBytes(sessTx)
-                        + " (" + fmtBytes(rateTx) + "/s)"
-                        + " | RX " + fmtBytes(sessRx)
-                        + " (" + fmtBytes(rateRx) + "/s)";
-                final String fSessDetail = sessDetail.toString();
                 final long fRateTx = rateTx, fRateRx = rateRx;
+                final long fSessTx = sessTx, fSessRx = sessRx;
+                final int fNSess = nSess;
+                final org.json.JSONArray fArr = arr;
                 ui.post(() -> {
                     monGo.setText(fGo);
                     monRam.setText(fApk + " (" + fSys + ")");
                     monCpu.setText("CPU app: " + fCpu);
                     monCache.setText(fCache);
-                    monSesi.setText(fSesi);
-                    monSesiDetail.setText(fSessDetail);
+                    // Fase 3: throughput = angka besar; label sesi ringkas.
+                    monRx.setText(fmtBytes(fRateRx) + "/s");
+                    monRxTotal.setText("total " + fmtBytes(fSessRx));
+                    monTx.setText(fmtBytes(fRateTx) + "/s");
+                    monTxTotal.setText("total " + fmtBytes(fSessTx));
+                    monSesi.setText("sesi aktif: " + fNSess);
+                    rebuildSessionChips(fArr, 20);
                     trafficGraph.addSample(fRateRx, fRateTx);
                     if (VpnEngine.running) updateVpnUi();
                 });
             }
         }).start();
+    }
+
+    // ---------- Fase 3: chip sesi ----------
+    // Satu chip per sesi (maks showCap): dot warna status + judul mono.
+    // Tap chip = buka/tutup detail. Chip di-update IN-PLACE (tanpa
+    // inflate ulang) sehingga detail yang sedang di-expand tidak kolap
+    // tiap tick 2 dtk; status expand dipersist di expandedSess.
+    // Warna dot: hijau = trafik bertambah sejak tick lalu (aktif),
+    // abu = hidup tapi idle, merah = belum pernah handshake (error).
+    private void rebuildSessionChips(org.json.JSONArray arr, int showCap) {
+        if (monSesiDetail == null) return;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        int n = arr == null ? 0 : Math.min(arr.length(), showCap);
+        for (int i = 0; i < n; i++) {
+            try {
+                org.json.JSONObject o = arr.getJSONObject(i);
+                final int idx = o.optInt("index", i);
+                seen.add(idx);
+                long tx = o.optLong("tx_bytes");
+                long rx = o.optLong("rx_bytes");
+                long hs = o.optLong("handshake_age_sec", -1);
+                long act = tx + rx;
+                Long prev = prevSessAct.get(idx);
+                boolean active = prev != null && act > prev;
+                prevSessAct.put(idx, act);
+                View chip = chipViews.get(idx);
+                if (chip == null) {
+                    chip = LayoutInflater.from(this).inflate(
+                            R.layout.row_session, monSesiDetail, false);
+                    chipViews.put(idx, chip);
+                    monSesiDetail.addView(chip);
+                    final TextView detailCh =
+                            chip.findViewById(R.id.chipDetail);
+                    chip.setOnClickListener(v -> {
+                        boolean show = detailCh.getVisibility()
+                                != View.VISIBLE;
+                        detailCh.setVisibility(show ? View.VISIBLE
+                                : View.GONE);
+                        if (show) expandedSess.add(idx);
+                        else expandedSess.remove(idx);
+                    });
+                }
+                View dot = chip.findViewById(R.id.chipDot);
+                TextView title = chip.findViewById(R.id.chipTitle);
+                TextView detail = chip.findViewById(R.id.chipDetail);
+                int dotColor = hs < 0 ? 0xFFFF5252
+                        : (active ? 0xFF69F0AE : 0xFFBDBDBD);
+                dot.getBackground().mutate().setTint(dotColor);
+                title.setText(String.format("#%d hs=%s tx=%s rx=%s",
+                        idx, hs < 0 ? "-" : hs + "s",
+                        fmtBytes(tx), fmtBytes(rx)));
+                detail.setText(String.format(
+                        "sesi #%d - handshake %s lalu, total %s turun "
+                                + "/ %s naik%s",
+                        idx, hs < 0 ? "belum" : hs + " dtk",
+                        fmtBytes(rx), fmtBytes(tx),
+                        active ? " - aktif" : ""));
+                detail.setVisibility(expandedSess.contains(idx)
+                        ? View.VISIBLE : View.GONE);
+            } catch (Exception ignored) {}
+        }
+        // buang chip sesi yang sudah tidak ada di snapshot terbaru
+        java.util.Iterator<java.util.Map.Entry<Integer, View>> it =
+                chipViews.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<Integer, View> e = it.next();
+            if (!seen.contains(e.getKey())) {
+                monSesiDetail.removeView(e.getValue());
+                it.remove();
+                prevSessAct.remove(e.getKey());
+                expandedSess.remove(e.getKey());
+            }
+        }
     }
 
     // ---------- Start/Stop ----------
@@ -1361,7 +1439,17 @@ public class MainActivity extends AppCompatActivity {
                 rebuildProxyTable();
                 updateHeader("-", "-");
                 trafficGraph.clear();
-                monSesiDetail.setText("");
+                // Fase 3: monSesiDetail kini container chip - kosongkan
+                // dengan removeAllViews (setText tidak kompile), reset
+                // state chip + angka throughput.
+                monSesiDetail.removeAllViews();
+                chipViews.clear();
+                prevSessAct.clear();
+                expandedSess.clear();
+                monRx.setText("-");
+                monTx.setText("-");
+                monRxTotal.setText("total -");
+                monTxTotal.setText("total -");
                 prevSessTx = -1;
                 prevSessRx = -1;
                 prevSessT = 0;
@@ -1461,6 +1549,10 @@ public class MainActivity extends AppCompatActivity {
         monCache = findViewById(R.id.monCache);
         monSesi = findViewById(R.id.monSesi);
         monSesiDetail = findViewById(R.id.monSesiDetail);
+        monRx = findViewById(R.id.monRx);
+        monTx = findViewById(R.id.monTx);
+        monRxTotal = findViewById(R.id.monRxTotal);
+        monTxTotal = findViewById(R.id.monTxTotal);
         proxyStatusView = findViewById(R.id.proxyStatus);
         // Long-press pada teks CPU untuk dump goroutine stack
         monCpu.setOnLongClickListener(v -> {
@@ -1902,6 +1994,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void runPingTest() {
         android.widget.TextView tv = findViewById(R.id.pingResult);
+        // Fase 3: pingResult GONE saat kosong (XML), VISIBLE saat dipakai.
+        tv.setVisibility(View.VISIBLE);
         tv.setText("testing...");
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();

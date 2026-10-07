@@ -138,7 +138,8 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
                             android:text=""
-                            android:textSize="13sp" />
+                            android:textSize="13sp"
+                            android:visibility="gone" />
 
                         <Button android:id="@+id/vpnToggleBtn"
                             style="@style/Widget.Material3.Button.TonalButton"
@@ -161,7 +162,8 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:text=""
-                            android:textSize="13sp" />
+                            android:textSize="13sp"
+                            android:visibility="gone" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
@@ -195,6 +197,65 @@
                             android:text="RAM: - | CPU: -"
                             android:textSize="12sp"
                             android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <!-- Fase 3: throughput = angka besar (TitleLarge)
+                             + total kecil, per arah (RX kiri, TX kanan).
+                             Pengganti baris teks panjang "sesi aktif: N |
+                             TX 0 B (0 B/s) | RX ..." yang terpotong di
+                             grid lama. -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="RX (turun)"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                                <TextView android:id="@+id/monRx"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="-"
+                                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+                                <TextView android:id="@+id/monRxTotal"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="total -"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:layout_marginStart="8dp">
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="TX (naik)"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                                <TextView android:id="@+id/monTx"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="-"
+                                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+                                <TextView android:id="@+id/monTxTotal"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="total -"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
+                        </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -233,12 +294,16 @@
                                 android:textSize="14sp" />
                         </LinearLayout>
 
-                        <TextView android:id="@+id/monSesiDetail"
+                        <!-- Fase 3: daftar sesi jadi CHIP (dot warna status
+                             + detail saat disentuh) - pengganti satu TextView
+                             monospace "#0 hs=- tx=0 B rx=0 B" per sesi yang
+                             teksnya menumpuk & terpotong. Isi diatur Java
+                             (rebuildSessionChips, update in-place). -->
+                        <LinearLayout android:id="@+id/monSesiDetail"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:textSize="12sp"
-                            android:typeface="monospace" />
+                            android:orientation="vertical"
+                            android:layout_marginTop="8dp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
