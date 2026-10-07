@@ -19,4 +19,10 @@
     <!-- Tertiary: aksen kedua palet orkid (klaster magenta image),
          dipakai grafik trafik (garis TX). -->
     <color name="m3_tertiary">#B331A2</color>
+
+    <!-- Fix pill melayang: warna container pill nav - 90% alpha di atas
+         surface container high light (#FDEAF2) supaya konten yang lewat
+         di belakang pill samar terlihat; elevation lib 6dp tetap memberi
+         shadow lembut agar pill terbaca. -->
+    <color name="nav_pill_container">#E6FDEAF2</color>
 </resources>

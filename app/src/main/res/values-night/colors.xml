@@ -14,4 +14,9 @@
     <!-- Tertiary night: aksen kedua palet orkid, versi terang agar
          tetap terbaca di surface ungu-hitam. -->
     <color name="m3_tertiary">#FDB0F0</color>
+
+    <!-- Fix pill melayang: container pill nav 90% alpha di atas surface
+         container high night (#312439) - konten lewat di belakang pill
+         samar terlihat, tanpa strip solid. -->
+    <color name="nav_pill_container">#E6312439</color>
 </resources>

@@ -1650,21 +1650,44 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(goStatusReceiver, new IntentFilter(GoEngineService.ACTION_STATUS), Context.RECEIVER_NOT_EXPORTED);
         setContentView(R.layout.activity_main);
 
-        // TAHAP 2: WindowInsets — root layout diberi padding systemBars
-        // (top + bottom) supaya konten tidak tertimpa status bar dan
-        // bottom nav tidak tertutup navigation bar. SATU-satunya tempat
-        // inset diterapkan (hotfix: MaterialToolbar placeholder 56dp yang
-        // menyebabkan ruang kosong atas dihapus dari layout; konten pertama
-        // kini mulai 12dp di bawah status bar). targetSdk 36 memaksa
-        // edge-to-edge; minSdk 34 -> API WindowInsets.Type tersedia
-        // tanpa androidx.
+        // TAHAP 2 + fix pill melayang: WindowInsets diterapkan SEKALI di
+        // sini (SATU-satunya tempat; targetSdk 36 edge-to-edge, minSdk 34
+        // -> API WindowInsets.Type tanpa androidx).
+        // - Inset atas: padding TOP root (status bar + cutout, aman notch).
+        // - Inset BAWAH TIDAK lagi menempel root: konten harus lewat di
+        //   belakang pill sampai tepi bawah layar. Dipakai untuk:
+        //   (1) margin bawah pill = inset nav + 4dp -> pill kecil ringkas
+        //       di tengah bawah, tidak menabrak gesture navigation;
+        //   (2) clearance bawah container scroll = token nav_pill_clearance
+        //       + inset -> item terakhir tetap bisa digeser ke atas pill
+        //       (kombinasi dengan clipToPadding=false di layout).
         View rootMain = findViewById(R.id.rootMain);
         rootMain.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(
                     android.view.WindowInsets.Type.systemBars()
                             | android.view.WindowInsets.Type.displayCutout());
             v.setPadding(v.getPaddingLeft(), bars.top,
-                    v.getPaddingRight(), bars.bottom);
+                    v.getPaddingRight(), 0);
+            int base = getResources().getDimensionPixelSize(
+                    R.dimen.nav_pill_clearance);
+            View pill = findViewById(R.id.navPill);
+            if (pill != null) {
+                android.widget.FrameLayout.LayoutParams lp =
+                        (android.widget.FrameLayout.LayoutParams)
+                                pill.getLayoutParams();
+                lp.bottomMargin = bars.bottom + (int) (4 * getResources()
+                        .getDisplayMetrics().density);
+                pill.setLayoutParams(lp);
+            }
+            int[] scrolls = {R.id.pageHome, R.id.pageSesi, R.id.logScroll,
+                    R.id.pageSetting};
+            for (int id : scrolls) {
+                View s = findViewById(id);
+                if (s != null) {
+                    s.setPadding(s.getPaddingLeft(), s.getPaddingTop(),
+                            s.getPaddingRight(), base + bars.bottom);
+                }
+            }
             return android.view.WindowInsets.CONSUMED;
         });
 

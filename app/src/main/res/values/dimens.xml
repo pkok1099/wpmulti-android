@@ -8,7 +8,11 @@
     <dimen name="corner_medium">6dp</dimen>
     <dimen name="corner_large">8dp</dimen>
 
-    <!-- Fase 2: jarak aman bawah halaman agar konten tidak tertutup pill
-         navbar (tinggi pill 64dp + margin 12dp + ruang napas). -->
+    <!-- Fix pill melayang: clearance BAWAH base container scroll (tinggi
+         pill 64dp + margin + ruang napas). Inset navigation bar DITAMBAH
+         dinamis oleh listener rootMain (base + bars.bottom) sehingga item
+         terakhir tetap bisa digeser ke atas pill di perangkat gesture nav
+         maupun 3-button. Dengan clipToPadding=false di scroll container,
+         konten tetap lewat di belakang pill - bukan dipotong. -->
     <dimen name="nav_pill_clearance">104dp</dimen>
 </resources>
