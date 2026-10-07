@@ -75,6 +75,12 @@
         <item name="contentPadding">12dp</item>
     </style>
 
+    <!-- TextField OutlinedBox sudut tegas (dipakai testUrl task 3,
+         logFilter task 4): OutlinedBox + Shape.Wpmulti.Small (token 4dp). -->
+    <style name="Widget.Wpmulti.TextField" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="shapeAppearance">@style/Shape.Wpmulti.Small</item>
+    </style>
+
     <!-- Kartu hero Beranda: bg colorPrimaryContainer (BUKAN colorPrimary)
          agar warna status semantik yang di-set Java (merah FF5252/amber/
          hijau pada statusBar) tetap terbaca di light+night. -->

@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Overhaul UI 2/7: Beranda komposisi baru — ScrollView berisi kolom
-     vertikal: HeroCard (statusBar + monGo + btnEngine) → Kartu VPN
+<!-- Overhaul UI 3/7: Beranda (2/7) + Halaman Sesi komposisi baru.
+     Beranda: HeroCard (statusBar + monGo + btnEngine) → Kartu VPN
      (vpnStatus/vpnStats/vpnToggleBtn/pingTestBtn/pingResult) → Kartu
      Monitor (trafficGraph di ATAS angka + headerStats + grid mon*/
      monSesiDetail). Hero pakai bg colorPrimaryContainer (BUKAN colorPrimary)
      agar warna status semantik Java (merah FF5252/amber/hijau) tetap
      terbaca di light+night; teks hero = colorOnPrimaryContainer.
-     Kartu Proxy di bawah = kondisi TRANSISI: seluruh ID dashboard proxy
-     (proxyTable/proxyStatus/verifyView/testUrl/test1Btn/test20Btn/
-     testResult) masih direferensikan MainActivity & tidak ada di layout
-     lain, jadi harus tetap ada sampai Task 3 memindahkannya ke pageSesi.
+     Sesi: Kartu Profil (totalView + configList + addBtn) → Kartu Proxy
+     (proxyTable + proxyStatus) → Kartu Uji Proxy (testUrl di
+     TextInputLayout Widget.Wpmulti.TextField + test1Btn/test20Btn +
+     testResult + verifyView). Kartu Proxy dipindah dari pageHome
+     (kondisi transisi 2/7 selesai); Profil Config dipindah dari
+     pageSetting sesuai peta ID plan (Sesi saja — duplikat ID dalam
+     1 layout membuat findViewById salah bind).
      Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
-     BottomNavigationView (navHome/navSesi/navLog/navSetelan).
-     pageSesi masih stub (diisi task 3). -->
+     BottomNavigationView (navHome/navSesi/navLog/navSetelan). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
@@ -33,8 +35,8 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- PAGE: HOME (hero + kartu VPN + kartu Monitor + kartu Proxy
-             transisi) — semua ID tetap ada untuk MainActivity. -->
+        <!-- PAGE: HOME (hero + kartu VPN + kartu Monitor) — semua ID
+             tetap ada untuk MainActivity. -->
         <ScrollView android:id="@+id/pageHome"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -228,9 +230,64 @@
                             android:typeface="monospace" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+        </ScrollView>
 
-                <!-- KARTU PROXY (TRANSISI — dipindah ke pageSesi di task 3;
-                     ID wajib tetap ada karena direferensikan MainActivity) -->
+        <!-- PAGE: SESI — ScrollView kartu vertikal: Profil Config →
+             Proxy → Uji Proxy (semua Widget.Wpmulti.Card, margin 8dp) -->
+        <ScrollView android:id="@+id/pageSesi"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:padding="12dp"
+            android:visibility="gone">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- KARTU PROFIL CONFIG -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Profil Config"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <TextView android:id="@+id/totalView"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="total sesi: 0"
+                            android:textSize="14sp" />
+                        <LinearLayout android:id="@+id/configList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingTop="4dp" />
+                        <Button android:id="@+id/addBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="UPLOAD PROFILE" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Maks 5 profile, 240 sesi per profile"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU PROXY -->
                 <com.google.android.material.card.MaterialCardView
                     style="@style/Widget.Wpmulti.Card"
                     android:layout_width="match_parent"
@@ -257,30 +314,52 @@
                             android:layout_marginTop="8dp"
                             android:text="Proxy SOCKS5/HTTP: tidak aktif"
                             android:textSize="14sp" />
-                        <TextView android:id="@+id/verifyView"
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU UJI PROXY -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:text="verifikasi: belum dites"
-                            android:textSize="13sp" />
-                        <EditText android:id="@+id/testUrl"
+                            android:text="Uji Proxy"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Wpmulti.TextField"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="http://ifconfig.me/ip"
-                            android:hint="URL untuk dites"
-                            android:singleLine="true" />
+                            android:hint="URL untuk dites">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/testUrl"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="http://ifconfig.me/ip"
+                                android:inputType="textUri" />
+                        </com.google.android.material.textfield.TextInputLayout>
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:layout_marginTop="8dp">
                             <Button android:id="@+id/test1Btn"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:layout_marginStart="8dp"
                                 android:text="TEST 1x" />
                             <Button android:id="@+id/test20Btn"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
@@ -293,22 +372,16 @@
                             android:layout_marginTop="8dp"
                             android:text=""
                             android:textSize="13sp" />
+                        <TextView android:id="@+id/verifyView"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="verifikasi: belum dites"
+                            android:textSize="13sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
         </ScrollView>
-
-        <!-- PAGE: SESI (stub — diisi task 3) -->
-        <FrameLayout android:id="@+id/pageSesi"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:text="Halaman Sesi (stub — diisi task 3)" />
-        </FrameLayout>
 
         <!-- PAGE: LOG -->
         <LinearLayout android:id="@+id/pageLog"
@@ -365,35 +438,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Profile Config"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-                <TextView android:id="@+id/totalView"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="total sesi: 0"
-                    android:textSize="14sp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="8dp" />
-                <LinearLayout android:id="@+id/configList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-                <Button android:id="@+id/addBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="UPLOAD PROFILE" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Maks 5 profile, 240 sesi per profile"
-                    android:textSize="12sp"
-                    android:paddingBottom="16dp" />
+                <!-- Profil Config (totalView/configList/addBtn) dipindah
+                     ke pageSesi di task 3 sesuai peta ID plan — di sini
+                     jangan dibuat ulang agar ID tidak duplikat. -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
