@@ -36,6 +36,18 @@
         <item name="colorTertiary">@color/m3_tertiary</item>
         <!-- Overscroll glow cyan (bukan default abu-abu). -->
         <item name="android:colorEdgeEffect">@color/glitch_scan</item>
+        <!-- Ripple cybercore (cy10): sentuhan/pressed di semua komponen
+             (termasuk baris list dialog & item dropdown) berkilat cyan
+             15%, bukan abu-abu netral bawaan. -->
+        <item name="android:colorControlHighlight">@color/glitch_ripple</item>
+        <!-- Scrollbar cybercore (cy10): thumb cyan tipis utk semua
+             ScrollView/ListView yang memakai default (log, list dialog). -->
+        <item name="android:scrollbarThumbVertical">@drawable/scrollbar_cyber</item>
+        <!-- SEMUA dialog framework (android.app.AlertDialog) satu sumber
+             tema (cy10): panel cybercore + stroke neon + tipografi
+             monospace + kontrol bertema - didefinisikan sekali di sini,
+             bukan per komponen. -->
+        <item name="android:alertDialogTheme">@style/Theme.WpmultiTest.Dialog</item>
         <!-- Snackbar (defensif): kalaupun dipakai nanti, tetap cyber,
              tidak memakai inverseSurface terang bawaan M3. -->
         <item name="snackbarStyle">@style/Widget.Wpmulti.Snackbar</item>
@@ -143,6 +155,20 @@
         <item name="android:windowExitAnimation">@anim/glitch_disintegrate</item>
     </style>
 
+    <!-- Varian MATI (cy10): 0-duration - dipakai saat efek glitch
+         dimatikan (mode Mati / AUTO + animator sistem 0) supaya window
+         dialog/popup muncul & tertutup SEKETIKA, bukan fade platform
+         default. Aman utk animator scale 0 (animasi window tidak
+         pernah dibaca dari callback Animator). -->
+    <style name="GlitchWindowAnimOff">
+        <item name="android:windowEnterAnimation">@anim/none</item>
+        <item name="android:windowExitAnimation">@anim/none</item>
+    </style>
+    <style name="GlitchPopupWindowOff">
+        <item name="android:windowEnterAnimation">@anim/none</item>
+        <item name="android:windowExitAnimation">@anim/none</item>
+    </style>
+
     <!-- Snackbar cyber (defensif cy3): container near-black biru + teks
          monospace cyan muda. Tidak dipakai kode saat ini (notif lewat HUD
          in-app), tapi style disiapkan agar tak pernah muncul box terang
@@ -154,5 +180,125 @@
     <style name="Widget.Wpmulti.Snackbar.TextView" parent="Widget.Material3.Snackbar.TextView">
         <item name="android:textColor">@color/m3_on_primary_container</item>
         <item name="android:typeface">monospace</item>
+    </style>
+
+    <!-- ================== THEME DIALOG CYBERCORE (cy10) ==================
+         SATU DialogTheme utk SEMUA dialog (loading "Memuat daftar
+         aplikasi", "Pilih aplikasi" / split tunnel, "Mode IP per
+         aplikasi", dan dialog framework lain dari halaman mana pun):
+         dipasang SEKALI via android:alertDialogTheme di Theme.WpmultiTest
+         + ContextThemeWrapper (dialogCtx()) utk widget yang dibuat
+         programatis DI DALAM dialog (EditText search, CheckBox baris
+         aplikasi, Button mode IP, ListView) karena widget-widget itu
+         tidak di-inflate dari XML layout dialog.
+         Framework-based (android.*) - cocok dgn android.app.AlertDialog
+         yang dipakai MainActivity. -->
+    <style name="Theme.WpmultiTest.Dialog" parent="android:Theme.Material.Dialog.Alert">
+        <!-- Panel gelap OPAQUE + border neon tipis + sudut tegas 8dp. -->
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <!-- Aksen: cyan (tombol aksi, kursor, kontrol aktif). -->
+        <item name="android:colorAccent">@color/m3_primary</item>
+        <item name="android:colorControlActivated">@color/m3_primary</item>
+        <item name="android:colorControlHighlight">@color/glitch_ripple</item>
+        <!-- Tipografi & warna teks: sama dgn halaman utama. -->
+        <item name="android:textColorPrimary">@color/glitch_white</item>
+        <item name="android:textColorSecondary">@color/m3_on_surface_variant</item>
+        <item name="android:textColorAlertDialogListItem">@color/glitch_white</item>
+        <item name="android:windowTitleStyle">@style/Widget.Wpmulti.DialogWindowTitle</item>
+        <!-- Tombol aksi dialog (BATAL/OK/TUTUP): borderless cyan mono. -->
+        <item name="android:buttonBarButtonStyle">@style/Widget.Wpmulti.DialogButton</item>
+        <!-- Search field: terminal/HUD (garis neon, cursor cyan jelas). -->
+        <item name="android:editTextStyle">@style/Widget.Wpmulti.EditText.Terminal</item>
+        <!-- Checkbox baris aplikasi: drawable cyber custom. -->
+        <item name="android:checkboxStyle">@style/Widget.Wpmulti.CheckBox</item>
+        <!-- Tombol programatis di dalam dialog (chip mode IP): default
+             framework Button -> chip neon flat (varian warna oleh kode
+             karena berbeda PER MODE: GLOBAL/IPv4/IPv6). Tombol aksi
+             framework tetap DialogButton via buttonBarButtonStyle
+             eksplisit di layout internal dialog. -->
+        <item name="android:buttonStyle">@style/Widget.Wpmulti.ModeChip</item>
+        <!-- Divider & scrollbar & list item color mengikuti tema. -->
+        <item name="android:listDivider">@drawable/divider_scanline</item>
+        <item name="android:scrollbarThumbVertical">@drawable/scrollbar_cyber</item>
+    </style>
+
+    <!-- Judul dialog: monospace bold + tracking - identik bahasa
+         tipografi halaman utama (statusBar/HUD). (Parentless: style
+         framework DialogWindowTitle tidak publik; semua item eksplisit.) -->
+    <style name="Widget.Wpmulti.DialogWindowTitle" parent="">
+        <item name="android:textAppearance">@style/TextAppearance.Wpmulti.DialogTitle</item>
+        <item name="android:gravity">center_vertical|start</item>
+        <item name="android:paddingLeft">20dp</item>
+        <item name="android:paddingRight">20dp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+    <style name="TextAppearance.Wpmulti.DialogTitle" parent="">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/glitch_white</item>
+    </style>
+
+    <!-- Tombol aksi dialog: konsisten dgn bahasa tombol aplikasi
+         (monospace bold tracking, cyan; pressed menyala putih). -->
+    <style name="Widget.Wpmulti.DialogButton" parent="android:Widget.Material.Button.Borderless.Colored">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.1</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/dialog_btn_text</item>
+        <item name="android:minHeight">44dp</item>
+        <item name="android:minWidth">64dp</item>
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">16dp</item>
+    </style>
+
+    <!-- Search field terminal/HUD: kotak near-black + garis neon,
+         cursor cyan tebal, seleksi cyan 18%. -->
+    <style name="Widget.Wpmulti.EditText.Terminal" parent="android:Widget.Material.EditText">
+        <item name="android:background">@drawable/bg_search_terminal</item>
+        <item name="android:textColor">@color/glitch_white</item>
+        <item name="android:textColorHint">@color/m3_on_surface_variant</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_cyber</item>
+        <item name="android:textColorHighlight">#2E22D3EE</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+
+    <!-- Checkbox cybercore: kotak tegas + check cyan. Terhubung dgn
+         glitch checked/unchecked (listener row sudah memanggil
+         glitchNow MINOR + jitter - tidak berubah). -->
+    <style name="Widget.Wpmulti.CheckBox" parent="android:Widget.Material.CompoundButton.CheckBox">
+        <item name="android:button">@drawable/cb_cyber</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/glitch_white</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+
+    <!-- Chip mode IP per aplikasi (tombol GLOBAL/IPv4/IPv6): label
+         neon flat TANPA shadow framework (stateListAnimator null,
+         elevation 0). Warna per mode dipasang kode (applyModeChipStyle):
+         bg + textColor dari token yang sama. -->
+    <style name="Widget.Wpmulti.ModeChip" parent="android:Widget.Material.Button">
+        <item name="android:background">@drawable/bg_chip_mode_global</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:minHeight">30dp</item>
+        <item name="android:minWidth">68dp</item>
+        <item name="android:paddingLeft">14dp</item>
+        <item name="android:paddingRight">14dp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">@color/m3_on_surface_variant</item>
     </style>
 </resources>

@@ -735,6 +735,24 @@ public class MainActivity extends AppCompatActivity {
         return m.equals("v4") ? "IPv4" : m.equals("v6") ? "IPv6" : "Global";
     }
 
+    // cy10: varian warna chip mode IP per aplikasi - GLOBAL slate, IPv4
+    // cyan, IPv6 magenta (token palet yang sama, tanpa hue baru). Gaya
+    // dasar datang dari Widget.Wpmulti.ModeChip via tema dialog; fungsi ini
+    // hanya memilih palet per mode. Glitch tetap HANYA pada tombol yang
+    // berubah (glitchNow MEDIUM di listener - tidak diubah).
+    private void applyModeChipStyle(android.widget.Button btn, String mode) {
+        if (mode.equals("v4")) {
+            btn.setBackgroundResource(R.drawable.bg_chip_mode_v4);
+            btn.setTextColor(getColor(R.color.m3_primary));
+        } else if (mode.equals("v6")) {
+            btn.setBackgroundResource(R.drawable.bg_chip_mode_v6);
+            btn.setTextColor(getColor(R.color.m3_tertiary));
+        } else {
+            btn.setBackgroundResource(R.drawable.bg_chip_mode_global);
+            btn.setTextColor(getColor(R.color.m3_on_surface_variant));
+        }
+    }
+
     private void updateVpnIpModeCount() {
         int n = 0;
         for (String k : getSharedPreferences("vpn", MODE_PRIVATE)
@@ -824,12 +842,25 @@ public class MainActivity extends AppCompatActivity {
     // Global -> IPv4 -> IPv6 -> Global. Berlaku saat VPN connect berikutnya.
     // Searchbar di dalam list (header ListView). Filter cocokkan
     // label ATAU package name. Dipasang sebelum setAdapter.
+    //
+    // cy10: SEMUA widget programatis di dalam dialog dibuat dgn
+    // dialogCtx() - context bertema Theme.WpmultiTest.Dialog (SATU sumber
+    // tema di themes.xml, terpasang juga sebagai android:alertDialogTheme):
+    // EditText search -> terminal/HUD neon, ListView -> divider scanline +
+    // scrollbar cyan + ripple cyan, Button -> chip neon flat. Bukan styling
+    // per komponen tersebar di kode.
+    private android.view.ContextThemeWrapper dialogCtx() {
+        return new android.view.ContextThemeWrapper(this,
+                R.style.Theme_WpmultiTest_Dialog);
+    }
+
     private android.widget.EditText addSearchHeader(
             android.widget.ListView lv,
             java.util.List<String[]> apps,
             java.util.List<String[]> shown,
             android.widget.BaseAdapter ad) {
-        android.widget.EditText search = new android.widget.EditText(this);
+        android.widget.EditText search =
+                new android.widget.EditText(dialogCtx());
         search.setHint("Cari aplikasi...");
         search.setSingleLine(true);
         float d = getResources().getDisplayMetrics().density;
@@ -866,7 +897,12 @@ public class MainActivity extends AppCompatActivity {
                 getSharedPreferences("vpn", MODE_PRIVATE);
         java.util.List<String[]> shown =
                 new java.util.ArrayList<>(apps);
-        android.widget.ListView lv = new android.widget.ListView(this);
+        float d = getResources().getDisplayMetrics().density;
+        // cy10: ListView dgn context bertema dialog - divider scanline,
+        // scrollbar cyan, ripple cyan (satu sumber tema).
+        android.widget.ListView lv = new android.widget.ListView(dialogCtx());
+        lv.setDivider(getDrawable(R.drawable.divider_scanline));
+        lv.setDividerHeight((int) (2 * d));
         android.widget.BaseAdapter ad = new android.widget.BaseAdapter() {
             public int getCount() { return shown.size(); }
             public Object getItem(int p) { return shown.get(p); }
@@ -879,16 +915,24 @@ public class MainActivity extends AppCompatActivity {
                 android.widget.TextView tv;
                 android.widget.Button btn;
                 if (cv == null) {
-                    row = new android.widget.LinearLayout(MainActivity.this);
+                    // cy10: context bertema dialog: Button otomatis chip
+                    // neon flat (Widget.Wpmulti.ModeChip); padding dp (bukan
+                    // px); label monospace satu baris ellipsize.
+                    row = new android.widget.LinearLayout(dialogCtx());
                     row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-                    row.setPadding(24, 16, 24, 16);
-                    tv = new android.widget.TextView(MainActivity.this);
+                    row.setPadding((int) (16 * d), (int) (10 * d),
+                            (int) (16 * d), (int) (10 * d));
+                    tv = new android.widget.TextView(dialogCtx());
                     tv.setLayoutParams(
                             new android.widget.LinearLayout.LayoutParams(0,
                                     android.view.ViewGroup.LayoutParams
                                             .WRAP_CONTENT, 1f));
-                    tv.setTextSize(15);
-                    btn = new android.widget.Button(MainActivity.this);
+                    tv.setTextSize(14);
+                    tv.setTypeface(android.graphics.Typeface.MONOSPACE);
+                    tv.setTextColor(getColor(R.color.glitch_white));
+                    tv.setSingleLine(true);
+                    tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    btn = new android.widget.Button(dialogCtx());
                     row.addView(tv);
                     row.addView(btn);
                     row.setTag(new android.view.View[]{tv, btn});
@@ -901,7 +945,9 @@ public class MainActivity extends AppCompatActivity {
                 }
                 tv.setText(label);
                 String key = "vpn_app_ip_" + pkg;
-                btn.setText(appIpModeLabel(vp.getString(key, "")));
+                String mode = vp.getString(key, "");
+                btn.setText(appIpModeLabel(mode));
+                applyModeChipStyle(btn, mode);
                 // cy6: baris dialog ikut sistem glitch (dedup di dalam).
                 GlitchText.registerTree(row);
                 GlitchText.installTouch(row);
@@ -912,6 +958,7 @@ public class MainActivity extends AppCompatActivity {
                     if (next.isEmpty()) vp.edit().remove(key).apply();
                     else vp.edit().putString(key, next).apply();
                     btn.setText(appIpModeLabel(next));
+                    applyModeChipStyle(btn, next);
                     // cy7: mode per app berubah = HANYA tombol mode itu
                     // (label row tidak berubah -> tidak ikut glitch).
                     GlitchText.glitchNow(btn, GlitchText.MEDIUM);
@@ -935,9 +982,16 @@ public class MainActivity extends AppCompatActivity {
                 ? dlg.getWindow().getDecorView() : lv;
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
-        // Window animation di-guard animScale (0 = tanpa animasi).
-        if (animScale() > 0f && dlg.getWindow() != null) {
-            dlg.getWindow().setWindowAnimations(R.style.GlitchWindowAnim);
+        // cy10: window animation ikut SATU fungsi pusat keputusan efek
+        // (isGlitchEnabled). HIDUP -> materialize/disintegrate glitch;
+        // MATI / AUTO + animator 0 -> 0-duration (seketika), bukan fade
+        // platform default. Menutup gap cy9: mode Selalu aktif + animator
+        // scale 0 kini tetap mendapat window anim glitch.
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setWindowAnimations(
+                    GlitchText.isGlitchEnabled()
+                            ? R.style.GlitchWindowAnim
+                            : R.style.GlitchWindowAnimOff);
         }
         dec.post(() -> {
             if (dec.getWindowToken() == null) return; // dialog sudah tutup
@@ -959,7 +1013,12 @@ public class MainActivity extends AppCompatActivity {
         java.util.Set<String> checked = new java.util.HashSet<>(saved);
         java.util.List<String[]> shown =
                 new java.util.ArrayList<>(apps);
-        android.widget.ListView lv = new android.widget.ListView(this);
+        float d = getResources().getDisplayMetrics().density;
+        // cy10: ListView dgn context bertema dialog (divider scanline +
+        // scrollbar cyan + ripple cyan dari satu sumber tema).
+        android.widget.ListView lv = new android.widget.ListView(dialogCtx());
+        lv.setDivider(getDrawable(R.drawable.divider_scanline));
+        lv.setDividerHeight((int) (2 * d));
         android.widget.BaseAdapter ad = new android.widget.BaseAdapter() {
             public int getCount() { return shown.size(); }
             public Object getItem(int p) { return shown.get(p); }
@@ -970,9 +1029,17 @@ public class MainActivity extends AppCompatActivity {
                 String label = shown.get(pos)[1];
                 android.widget.CheckBox cb;
                 if (cv == null) {
-                    cb = new android.widget.CheckBox(MainActivity.this);
-                    cb.setPadding(24, 16, 24, 16);
-                    cb.setTextSize(15);
+                    // cy10: checkbox cybercore (Widget.Wpmulti.CheckBox
+                    // via tema dialog: kotak tegas + check cyan + teks
+                    // monospace). Padding dp (dulu px mentah = terlalu
+                    // rapat) + label SATU BARIS ellipsize - nama aplikasi/
+                    // package super panjang tidak lagi saling menimpa
+                    // (laporan screenshot) dan list tetap padat terbaca.
+                    cb = new android.widget.CheckBox(dialogCtx());
+                    cb.setPadding((int) (16 * d), (int) (10 * d),
+                            (int) (16 * d), (int) (10 * d));
+                    cb.setSingleLine(true);
+                    cb.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 } else {
                     cb = (android.widget.CheckBox) cv;
                 }
@@ -1002,7 +1069,7 @@ public class MainActivity extends AppCompatActivity {
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Pilih aplikasi")
                 .setView(lv)
-                .setPositiveButton("OK", (d, w) -> {
+                .setPositiveButton("OK", (d2, w) -> {
                     getSharedPreferences("vpn", MODE_PRIVATE).edit()
                             .putStringSet("vpn_apps", checked).apply();
                     updateVpnAppCount();
@@ -1014,8 +1081,13 @@ public class MainActivity extends AppCompatActivity {
                 ? dlg.getWindow().getDecorView() : lv;
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
-        if (animScale() > 0f && dlg.getWindow() != null) {
-            dlg.getWindow().setWindowAnimations(R.style.GlitchWindowAnim);
+        // cy10: guard window animation = isGlitchEnabled() (lihat catatan
+        // di showAppIpModePickerNow - menutup gap cy9).
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setWindowAnimations(
+                    GlitchText.isGlitchEnabled()
+                            ? R.style.GlitchWindowAnim
+                            : R.style.GlitchWindowAnimOff);
         }
         dec.post(() -> {
             if (dec.getWindowToken() == null) return; // dialog sudah tutup
@@ -1061,10 +1133,11 @@ public class MainActivity extends AppCompatActivity {
 
     // Glitchcore cy3: kilat 4 langkah putih -> merah -> cyan -> putih
     // sebelum warna status final (kesan "sinyal kehilangan sinkron" saat
-    // engine pindah state). Hormati pengaturan animasi (animScale 0 =
-    // langsung warna final, tanpa kilat).
+    // engine pindah state). cy10: keputusan ikut fungsi pusat
+    // isGlitchEnabled() (dulu animScale() - gap cy9: mode Selalu aktif +
+    // animator scale 0 kehilangan kilat). MATI -> langsung warna final.
     private void glitchFlash(final TextView tv, final int finalColor) {
-        if (animScale() <= 0f) {
+        if (!GlitchText.isGlitchEnabled()) {
             tv.setTextColor(finalColor);
             return;
         }
@@ -2100,11 +2173,13 @@ public class MainActivity extends AppCompatActivity {
         vpnDnsServer = findViewById(R.id.vpnDnsServer);
         SharedPreferences vprefs = getSharedPreferences("vpn", MODE_PRIVATE);
         String[] modes = {"DoH (HTTPS)", "DoT (TLS)", "DoQ (QUIC)", "Plain DNS"};
+        // cy10: item spinner + dropdown layout cybercore (monospace,
+        // glitch_white; baris dropdown dipakai GlitchDropdown lewat
+        // getDropDownView - padding lega + item terpilih cyan).
         android.widget.ArrayAdapter<String> dnsAd =
                 new android.widget.ArrayAdapter<>(this,
-                        android.R.layout.simple_spinner_item, modes);
-        dnsAd.setDropDownViewResource(
-                android.R.layout.simple_spinner_dropdown_item);
+                        R.layout.spinner_item, modes);
+        dnsAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
         vpnDnsMode.setAdapter(dnsAd);
         // mapping spinner position -> mode key
         String savedMode = vprefs.getString("dns_mode", "doh");
@@ -2132,9 +2207,8 @@ public class MainActivity extends AppCompatActivity {
                 "Kecuali yang dipilih"};
         android.widget.ArrayAdapter<String> appAd =
                 new android.widget.ArrayAdapter<>(this,
-                        android.R.layout.simple_spinner_item, appModes);
-        appAd.setDropDownViewResource(
-                android.R.layout.simple_spinner_dropdown_item);
+                        R.layout.spinner_item, appModes);
+        appAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
         vpnAppMode.setAdapter(appAd);
         String savedAppMode = vprefs.getString("vpn_app_mode", "all");
         int appPos = savedAppMode.equals("allow") ? 1
@@ -2162,9 +2236,8 @@ public class MainActivity extends AppCompatActivity {
                 "IPv6 saja (bypass IPv4)", "IPv4 saja (bypass IPv6)"};
         android.widget.ArrayAdapter<String> ipAd =
                 new android.widget.ArrayAdapter<>(this,
-                        android.R.layout.simple_spinner_item, ipModes);
-        ipAd.setDropDownViewResource(
-                android.R.layout.simple_spinner_dropdown_item);
+                        R.layout.spinner_item, ipModes);
+        ipAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
         vpnIpMode.setAdapter(ipAd);
         String savedIpMode = vprefs.getString("vpn_ip_mode", "dual");
         int ipPos = savedIpMode.equals("v6only") ? 1
@@ -2273,9 +2346,9 @@ public class MainActivity extends AppCompatActivity {
 
         // log level spinner
         ArrayAdapter<String> ad = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 new String[]{"Semua", "Verbose", "Debug", "Info", "Warn", "Error"});
-        ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        ad.setDropDownViewResource(R.layout.spinner_dropdown_item);
         logLevel.setAdapter(ad);
         logLevel.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
@@ -2294,9 +2367,9 @@ public class MainActivity extends AppCompatActivity {
         // efek; glitch hanya lapisan visual - state UI & input normal.
         Spinner glitchModeSp = findViewById(R.id.glitchMode);
         ArrayAdapter<String> gmAd = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item,
+                R.layout.spinner_item,
                 new String[]{"Auto (ikuti sistem)", "Selalu aktif", "Mati"});
-        gmAd.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        gmAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
         glitchModeSp.setAdapter(gmAd);
         int gmode = getSharedPreferences("ui", MODE_PRIVATE)
                 .getInt("glitch_mode", GlitchText.MODE_ALWAYS_ON);

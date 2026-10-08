@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kursor teks neon (cy10): batang cyan 2dp - dipakai
+     android:textCursorDrawable pada Widget.Wpmulti.EditText.Terminal
+     agar cursor jelas terlihat di kanvas gelap. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <size android:width="2dp" />
+    <solid android:color="@color/m3_primary" />
+</shape>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Item DROPDOWN Spinner (cy10): pengganti simple_spinner_dropdown_item
+     platform - dipakai GlitchDropdown lewat jembatan getDropDownView.
+     Padding lega 48dp min-height, monospace; item TERPILIH (state
+     activated -> setItemChecked oleh GlitchDropdown) berwarna cyan -
+     user tahu nilai sekarang tanpa ada elemen visual baru lain. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="48dp"
+    android:singleLine="true"
+    android:ellipsize="end"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:gravity="center_vertical"
+    android:fontFamily="monospace"
+    android:textSize="14sp"
+    android:textColor="@color/spinner_item_text" />

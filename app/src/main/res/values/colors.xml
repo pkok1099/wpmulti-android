@@ -76,4 +76,26 @@
     <color name="m3_surface_container">#121A26</color>
     <color name="m3_surface_dim">#080C13</color>
     <color name="m3_surface_bright">#202C3D</color>
+
+    <!-- ============ THEME DIALOG CYBERCORE (cy10) ============
+         SATU sumber (Theme.WpmultiTest.Dialog) utk SEMUA dialog.
+         Semua turunan palet existing - tanpa hue baru: near-black biru,
+         cyan primary, magenta tertiary. -->
+    <!-- Panel dialog: OPAQUE (teks konten di belakang tidak tembus),
+         sedikit lebih terang dari kartu aplikasi agar panel terbaca
+         "di atas" kanvas near-black. -->
+    <color name="dialog_surface">#1B2637</color>
+    <!-- Border neon tipis (1dp) dialog & field terminal: cyan 40%. -->
+    <color name="dialog_stroke">#6622D3EE</color>
+    <!-- Kanvas field terminal (search/EditText dialog): near-black pekat
+         agar field "turun" di bawah panel. -->
+    <color name="field_terminal_bg">#0A121C</color>
+    <!-- Chip mode IP per aplikasi: GLOBAL netral (slate), IPv4 cyan,
+         IPv6 magenta - wash tembus 15% + stroke 1dp dari palet. -->
+    <color name="chip_global_bg">#0F1826</color>
+    <color name="chip_v4_bg">#2622D3EE</color>
+    <color name="chip_v6_bg">#26F0ABFC</color>
+    <!-- Scrollbar & ripple cybercore: cyan 40% / 15%. -->
+    <color name="scrollbar_thumb">#6622D3EE</color>
+    <color name="glitch_ripple">#2622D3EE</color>
 </resources>
