@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Animasi window 0-duration (cy10): dipakai style GlitchWindowAnimOff /
+     GlitchPopupWindowOff saat mode efek MATI (atau AUTO + animator
+     sistem 0) - dialog/popup muncul & tertutup SEKETIKA tanpa animasi
+     platform default, tanpa bergantung pada setting skala animasi. -->
+<alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="0"
+    android:fromAlpha="1.0"
+    android:toAlpha="1.0" />

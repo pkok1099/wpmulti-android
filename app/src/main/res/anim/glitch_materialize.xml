@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Materialize glitch (cy7): bukan fade biasa - alpha flicker 5 langkah
+     (gelap - nyaris utuh - gelap - nyaris utuh - UTUH) + micro squeeze
+     scale + offset Y kecil. Dipakai window dialog & popup dropdown saat
+     MUNCUL. fillAfter=false: nilai akhir = nilai asli view (bersih). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="260"
+    android:fillAfter="false"
+    android:fillEnabled="false">
+
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="0.55"
+        android:startOffset="0"
+        android:duration="40" />
+    <alpha
+        android:fromAlpha="0.1"
+        android:toAlpha="0.85"
+        android:startOffset="45"
+        android:duration="55" />
+    <alpha
+        android:fromAlpha="0.1"
+        android:toAlpha="0.35"
+        android:startOffset="105"
+        android:duration="45" />
+    <alpha
+        android:fromAlpha="0.2"
+        android:toAlpha="0.9"
+        android:startOffset="155"
+        android:duration="55" />
+    <alpha
+        android:fromAlpha="0.3"
+        android:toAlpha="1.0"
+        android:startOffset="215"
+        android:duration="45" />
+
+    <scale
+        android:fromXScale="0.965"
+        android:toXScale="1.0"
+        android:fromYScale="0.965"
+        android:toYScale="1.0"
+        android:pivotX="50%"
+        android:pivotY="42%"
+        android:startOffset="0"
+        android:duration="260" />
+
+    <translate
+        android:fromYDelta="3%"
+        android:toYDelta="0"
+        android:startOffset="0"
+        android:duration="260" />
+</set>

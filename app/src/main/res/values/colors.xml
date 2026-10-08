@@ -1,22 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#48227E</color>
+    <color name="ic_launcher_background">#003441</color>
 
-    <!-- Palet M3 Expressive "Orkid Tegas" - diekstrak dari image referensi
-         (anime orkid-magenta). Nilai langsung dari klaster dominan:
-         primary #8D32AE, container #FFDAF3, on_container #48227E,
-         surface_container #FDEAF2. Turunan terkontrol: surface #FFFAFC,
-         teks sekunder #5C4E63, outline #867390 (kontras teks >= 4.5:1).
-         Nilai night ada di values-night. -->
-    <color name="m3_primary">#8D32AE</color>
-    <color name="m3_on_primary">#FFFFFF</color>
-    <color name="m3_primary_container">#FFDAF3</color>
-    <color name="m3_on_primary_container">#48227E</color>
-    <color name="m3_surface">#FFFAFC</color>
-    <color name="m3_surface_container_high">#FDEAF2</color>
-    <color name="m3_on_surface_variant">#5C4E63</color>
-    <color name="m3_outline">#867390</color>
-    <!-- Tertiary: aksen kedua palet orkid (klaster magenta image),
-         dipakai grafik trafik (garis TX). -->
-    <color name="m3_tertiary">#B331A2</color>
+    <!-- Palet M3 Expressive "Cybercore" (dark-only) - pengganti Orkid
+         Tegas. Kanvas near-black biru #0B1119, aksen neon: primary cyan
+         #22D3EE, tertiary magenta #F0ABFC. Kontras terkontrol:
+         on_surface_variant vs container ~6.6:1, primary vs surface
+         ~10:1, semua >= 4.5:1. Identitas gelap tunggal: values-night
+         DIHAPUS, palet ini dipakai di semua konfigurasi. -->
+    <color name="m3_primary">#22D3EE</color>
+    <color name="m3_on_primary">#002833</color>
+    <color name="m3_primary_container">#00404F</color>
+    <color name="m3_on_primary_container">#B8F1FF</color>
+    <color name="m3_surface">#0B1119</color>
+    <color name="m3_surface_container_high">#16202E</color>
+    <color name="m3_on_surface_variant">#93A6BA</color>
+    <color name="m3_outline">#3D5064</color>
+    <!-- Tertiary: aksen kedua cybercore (neon magenta), dipakai grafik
+         trafik (garis TX). -->
+    <color name="m3_tertiary">#F0ABFC</color>
+
+    <!-- Pill nav melayang: container glassy dark 90% alpha (#131D2B)
+         supaya konten yang lewat di belakang pill samar terlihat.
+         cy10.3: TANPA elevation/shadow lagi - pill = FrameLayout +
+         GradientDrawable capsule XML (bg_nav_pill.xml) + elevation 0.
+         Shadow framework pada view translucent adalah salah satu sumber
+         artifact kotak di tepi pill (lihat docs/KNOWN_ISSUES.md);
+         kesan melayang cukup dari translucency + margin. -->
+    <color name="nav_pill_container">#E6131D2B</color>
+
+    <!-- Warna status semantik - dipakai Java via getColor(); sebelumnya
+         literal 0xFF... tersebar di MainActivity. Neon di atas kanvas
+         gelap; status_gray = "off" (steel dim, tetap >= 7:1 vs surface).
+         status_red memakai merah glitch #FF3355 (bukan material red):
+         lebih tajam di kanvas near-black, sekaligus jadi sisi R dari
+         pasangan chromatic aberration (vs primary cyan). -->
+    <color name="status_red">#FF3355</color>
+    <!-- status_amber -> ACID #D4FF3F (glitchcore 70%): kuning-hijau asam
+         khas glitch, dipakai saat MEMULAI/MENGHENTIKAN. Kontras vs hero
+         #00404F ~8:1 - aman. -->
+    <color name="status_amber">#D4FF3F</color>
+    <color name="status_green">#69F0AE</color>
+    <color name="status_coral">#FF8A80</color>
+    <color name="status_gray">#8FA3B8</color>
+
+    <!-- Aksen Glitchcore (fusi cy2, dieskalasi cy3 jadi 70%):
+         glitch_scan = garis scanline dashed cyan 30% (divider antar
+         kartu), glitch_shadow = ghost merah 70% utk RGB-split statusBar,
+         glitch_shadow_cyan = ghost cyan sisi berlawanan (monGo, offset
+         kiri), glitch_white = kilat flash saat perpindahan state.
+         Semua turunan palet yang sudah ada - tanpa hue baru. -->
+    <color name="glitch_scan">#4D22D3EE</color>
+    <color name="glitch_shadow">#B3FF3355</color>
+    <color name="glitch_shadow_cyan">#9922D3EE</color>
+    <color name="glitch_white">#E6F6FF</color>
+
+    <!-- GlitchText (Task 32, "banyak tapi tipis"): ghost BASELINE red 20%
+         utk SEMUA TextView (kesan misregister permanen tanpa penebal) dan
+         blok datamosh acid 20% (BackgroundColorSpan sesaat saat wander
+         burst). Keduanya turunan palet existing - tanpa hue baru. -->
+    <color name="glitch_shadow_thin">#33FF3355</color>
+    <color name="glitch_block">#33D4FF3F</color>
+
+    <!-- GlitchDropdown (cy7): latar popup dropdown - near-black biru lebih
+         pekat dari nav_pill_container agar item terbaca di atas konten
+         scroll; stroke neon dari m3_primary ada di bg_dropdown.xml. -->
+    <color name="glitch_dropdown_bg">#F0111D2B</color>
+
+    <!-- Sweep abu-abu netral M3 (cy3): keluarga surfaceContainer yang
+         tidak ikut remap cy1 masih memakai default lib (neutral gray
+         #1D1B20 dst) - terlihat sbg "box abu-abu" di komponen lib
+         (dropdown, snackbar, dsb). Semua dipetakan ke tangga near-black
+         ber-tona biru supaya 100% kanvas cybercore. -->
+    <color name="m3_surface_container_lowest">#0A0F16</color>
+    <color name="m3_surface_container_low">#0E141D</color>
+    <color name="m3_surface_container">#121A26</color>
+    <color name="m3_surface_dim">#080C13</color>
+    <color name="m3_surface_bright">#202C3D</color>
+
+    <!-- ============ THEME DIALOG CYBERCORE (cy10) ============
+         SATU sumber (Theme.WpmultiTest.Dialog) utk SEMUA dialog.
+         Semua turunan palet existing - tanpa hue baru: near-black biru,
+         cyan primary, magenta tertiary. -->
+    <!-- Panel dialog: OPAQUE (teks konten di belakang tidak tembus),
+         sedikit lebih terang dari kartu aplikasi agar panel terbaca
+         "di atas" kanvas near-black. -->
+    <color name="dialog_surface">#1B2637</color>
+    <!-- Border neon tipis (1dp) dialog & field terminal: cyan 40%. -->
+    <color name="dialog_stroke">#6622D3EE</color>
+    <!-- Kanvas field terminal (search/EditText dialog): near-black pekat
+         agar field "turun" di bawah panel. -->
+    <color name="field_terminal_bg">#0A121C</color>
+    <!-- Chip mode IP per aplikasi: GLOBAL netral (slate), IPv4 cyan,
+         IPv6 magenta - wash tembus 15% + stroke 1dp dari palet. -->
+    <color name="chip_global_bg">#0F1826</color>
+    <color name="chip_v4_bg">#2622D3EE</color>
+    <color name="chip_v6_bg">#26F0ABFC</color>
+    <!-- Scrollbar & ripple cybercore: cyan 40% / 15%. -->
+    <color name="scrollbar_thumb">#6622D3EE</color>
+    <color name="glitch_ripple">#2622D3EE</color>
 </resources>

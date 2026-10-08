@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Warna teks item dropdown (cy10): item TERPILIH = neon cyan
+     (state_activated, dipasang GlitchDropdown.setItemChecked), selain
+     itu glitch_white - kontras >= 4.5:1 di atas glitch_dropdown_bg. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:state_activated="true"
+        android:color="@color/m3_primary" />
+    <item android:color="@color/glitch_white" />
+</selector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- cy10.4: warna ikon item navbar (CyberNavBar). State SELECTED menjalar
+     dari item via duplicateParentState. Warna identik dengan selector lib
+     era BNV + ThemeOverlay.Wpmulti.NavPill: aktif = colorOnSecondaryContainer
+     -> m3_on_primary_container; nonaktif = colorOnSurfaceVariant. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/m3_on_primary_container" />
+    <item android:color="@color/m3_on_surface_variant" />
+</selector>
