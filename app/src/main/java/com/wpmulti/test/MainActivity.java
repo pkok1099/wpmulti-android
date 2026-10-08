@@ -854,6 +854,29 @@ public class MainActivity extends AppCompatActivity {
                 R.style.Theme_WpmultiTest_Dialog);
     }
 
+    // cy10.1: AKAR bug "keyboard tidak muncul" di search field dialog
+    // "Pilih aplikasi" & "Mode IP per aplikasi" (paste long-press tetap
+    // jalan karena UI clipboard BUKAN IME). Framework AlertDialog
+    // (AlertController.setupCustomContent) memasang FLAG_ALT_FOCUSABLE_IM
+    // pada window saat custom view tidak dianggap editor teks - dan
+    // ListView ini belum punya anak saat show() (EditText search baru
+    // menempel sebagai HEADER saat layout pertama ListView), sehingga
+    // canTextInput() = false. Window bertanda itu dikecualikan dari IME:
+    // imm.showSoftInput dari tap ditolak senyap. Fix: clear flag +
+    // softInputMode eksplisit - STATE_VISIBLE (keyboard tampil saat field
+    // dapat fokus) + ADJUST_RESIZE (list menyusut, search tak tertutup
+    // keyboard). Dicek juga: TIDAK ada setFlags dialog di kode app - flag
+    // ini murni dari framework, bukan tema yang ditimpa.
+    private void fixDialogIme(android.view.Window w) {
+        w.clearFlags(android.view.WindowManager.LayoutParams
+                .FLAG_ALT_FOCUSABLE_IM);
+        w.setSoftInputMode(
+                android.view.WindowManager.LayoutParams
+                        .SOFT_INPUT_STATE_VISIBLE
+                | android.view.WindowManager.LayoutParams
+                        .SOFT_INPUT_ADJUST_RESIZE);
+    }
+
     private android.widget.EditText addSearchHeader(
             android.widget.ListView lv,
             java.util.List<String[]> apps,
@@ -863,6 +886,22 @@ public class MainActivity extends AppCompatActivity {
                 new android.widget.EditText(dialogCtx());
         search.setHint("Cari aplikasi...");
         search.setSingleLine(true);
+        // cy10.1: fokus & IME eksplisit (belt-and-braces; akar fix ada di
+        // fixDialogIme - window flag framework). Field focusable + tap =
+        // requestFocus + showSoftInput via InputMethodManager. Glitch
+        // typing tidak menyentuh fokus/cursor/selection (korupsi ketik
+        // via setSpan saja, kilat via setShadowLayer saja) dan scanline
+        // = ViewOverlay (hanya menggambar, tidak menyerap sentuhan) -
+        // field tetap menerima semua sentuhan.
+        search.setFocusable(true);
+        search.setFocusableInTouchMode(true);
+        search.setOnClickListener(v -> {
+            v.requestFocus();
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager)
+                            getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) imm.showSoftInput(v, 0);
+        });
         float d = getResources().getDisplayMetrics().density;
         int pad = (int) (16 * d);
         search.setPadding(pad, pad / 2, pad, pad / 2);
@@ -988,6 +1027,11 @@ public class MainActivity extends AppCompatActivity {
         // platform default. Menutup gap cy9: mode Selalu aktif + animator
         // scale 0 kini tetap mendapat window anim glitch.
         if (dlg.getWindow() != null) {
+            // cy10.1: clear FLAG_ALT_FOCUSABLE_IM + softInputMode EKSLISIT
+            // sebelum animasi window (akar fix keyboard - lihat
+            // fixDialogIme). Tanpa ini tap search field tak pernah
+            // memunculkan keyboard walau fokus/aman tapnya bekerja.
+            fixDialogIme(dlg.getWindow());
             dlg.getWindow().setWindowAnimations(
                     GlitchText.isGlitchEnabled()
                             ? R.style.GlitchWindowAnim
@@ -1035,8 +1079,14 @@ public class MainActivity extends AppCompatActivity {
                     // rapat) + label SATU BARIS ellipsize - nama aplikasi/
                     // package super panjang tidak lagi saling menimpa
                     // (laporan screenshot) dan list tetap padat terbaca.
+                    // cy10.1: kiri 16dp -> 18dp (+2dp SAJA - laporan
+                    // "centang terlalu ke kiri"; jangan lebih). Ini satu-
+                    // satunya dialog ber-checkbox -> konsisten by default.
+                    // Kanan/vertikal + jarak box-ke-teks (paddingStart dari
+                    // style) tidak berubah: teks row hanya ikut bergeser
+                    // 2dp, tinggi/lebar row tetap (tidak ada layout shift).
                     cb = new android.widget.CheckBox(dialogCtx());
-                    cb.setPadding((int) (16 * d), (int) (10 * d),
+                    cb.setPadding((int) (18 * d), (int) (10 * d),
                             (int) (16 * d), (int) (10 * d));
                     cb.setSingleLine(true);
                     cb.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1084,6 +1134,11 @@ public class MainActivity extends AppCompatActivity {
         // cy10: guard window animation = isGlitchEnabled() (lihat catatan
         // di showAppIpModePickerNow - menutup gap cy9).
         if (dlg.getWindow() != null) {
+            // cy10.1: clear FLAG_ALT_FOCUSABLE_IM + softInputMode EKSLISIT
+            // sebelum animasi window (akar fix keyboard - lihat
+            // fixDialogIme). Tanpa ini tap search field tak pernah
+            // memunculkan keyboard walau fokus/aman tapnya bekerja.
+            fixDialogIme(dlg.getWindow());
             dlg.getWindow().setWindowAnimations(
                     GlitchText.isGlitchEnabled()
                             ? R.style.GlitchWindowAnim
