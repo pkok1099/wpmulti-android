@@ -12,18 +12,26 @@ import android.widget.PopupWindow;
 import android.widget.Spinner;
 
 /**
- * GlitchDropdown (cy7) - dropdown yang BENAR-BENAR bagian dari bahasa
+ * GlitchDropdown (cy8) - dropdown yang BENAR-BENAR bagian dari bahasa
  * visual glitch, menggantikan popup platform Spinner yang tidak bisa
  * dianimasikan:
  *
- *  OPEN    : popup materialize staggered (item menyala bergeser waktu)
- *            + burst teks MEDIUM sekali di seluruh item.
- *  OPENED  : pulse mikro berkala (380-650ms) pada SATU item acak -
- *            dropdown terasa "unstable" tanpa mengganggu pemilihan.
- *  SELECT  : item-list korupsi singkat (vanish staggered) lalu popup
- *            ditutup; Spinner.setSelection memicu listener state nyata.
+ *  OPEN    : window flicker (glitch_materialize) + scanline menyapu
+ *            popup + item materialize staggered (alpha flicker +
+ *            displacement bergeser waktu) + burst teks MEDIUM.
+ *  OPENED  : pulse mikro berkala (380-650ms) pada SATU item acak +
+ *            shimmer scanline tipis tiap beberapa pulse - dropdown
+ *            terasa "unstable" TANPA mengganggu pemilihan.
+ *  SELECT  : kilat scanline + item-list korupsi (vanish staggered)
+ *            lalu popup ditutup; Spinner.setSelection memicu listener
+ *            state nyata.
  *  DISMISS : tap luar / back -> windowExitAnimation (glitch_disintegrate)
  *            via style popup.
+ *
+ * CATATAN cy8: kelas ini sebelumnya TIDAK PERNAH terpanggil (cabang
+ * Spinner di GlitchText.installTouch tertutup cabang ViewGroup yang
+ * selalu return) - itulah sebabnya dropdown masih terasa seperti UI
+ * Android biasa. Kini benar-benar aktif.
  *
  * State tetap milik Spinner + adapter-nya (minimal-invasif): popup hanya
  * lapisan presentasi; nilai terpilih tetap dibaca dari Spinner. Tap
@@ -35,6 +43,7 @@ final class GlitchDropdown {
     private static PopupWindow sOpen;
     private static ListView sOpenList;
     private static boolean sClosing;
+    private static int sPulseCount;
     private static final Handler H = new Handler(Looper.getMainLooper());
 
     private GlitchDropdown() {}
@@ -44,6 +53,12 @@ final class GlitchDropdown {
         @Override public void run() {
             if (sOpen == null || sOpenList == null) return;
             GlitchText.dropdownPulse(sOpenList);
+            // tiap pulse ke-4: shimmer scanline tipis sesaat - dropdown
+            // "bernapas" tanpa guncangan konstan.
+            if (++sPulseCount % 4 == 0
+                    && GlitchText.isFxAllowed()) {
+                GlitchText.scanline(sOpenList, 90, 70);
+            }
             H.postDelayed(this, 380 + GlitchText.rndInt(270));
         }
     };
@@ -98,6 +113,13 @@ final class GlitchDropdown {
 
         pw.setOnDismissListener(() -> {
             H.removeCallbacks(sPulse);
+            // hygiene: overlay & efek pada item popup dilepas bersih -
+            // tidak ada langkah tertunda yang tersisa pada view mati.
+            GlitchText.clearScanline(lv);
+            GlitchText.cancelFor(lv);
+            for (int i = 0; i < lv.getChildCount(); i++) {
+                GlitchText.cancelFor(lv.getChildAt(i));
+            }
             if (sOpen == pw) {
                 sOpen = null;
                 sOpenList = null;
@@ -119,25 +141,30 @@ final class GlitchDropdown {
         }
         sOpen = pw;
         sOpenList = lv;
+        sPulseCount = 0;
 
         if (fx) {
-            // Materialize: burst teks + fragment item menyala staggered;
-            // daftarkan teks popup agar pulse punya span korupsi nyata.
+            // Materialize (setelah popup benar-benar layout):
+            // scanline menyapu + burst teks + fragment item menyala
+            // staggered dgn displacement. Teks popup didaftarkan agar
+            // pulse punya span korupsi nyata.
             lv.post(() -> {
                 if (sOpen != pw) return; // sudah ditutup lagi
                 GlitchText.registerTree(lv);
+                GlitchText.scanline(lv, 320);
                 GlitchText.glitchTree(lv, GlitchText.MEDIUM);
                 GlitchText.materializeStaggered(lv);
                 H.removeCallbacks(sPulse);
-                H.postDelayed(sPulse, 420);
+                H.postDelayed(sPulse, 480);
             });
         }
     }
 
     /**
-     * Tutup popup. selectMode=true -> item-list korupsi singkat (vanish
-     * staggered) sebelum dismiss; false (tap luar/back) -> langsung
-     * dismiss (exit animation style yang menangani disintegrate).
+     * Tutup popup. selectMode=true -> kilat scanline + item-list korupsi
+     * singkat (vanish staggered) sebelum dismiss; false (tap luar/back)
+     * -> langsung dismiss (exit animation style yang menangani
+     * disintegrate).
      */
     private static void close(boolean selectMode) {
         PopupWindow pw = sOpen;
@@ -146,9 +173,11 @@ final class GlitchDropdown {
         if (selectMode && GlitchText.isFxAllowed() && !sClosing
                 && sOpenList != null) {
             sClosing = true;
+            // disintegrate: kilat scanline + fragment pecah bergeser
+            GlitchText.scanline(sOpenList, 140);
             GlitchText.glitchTree(sOpenList, GlitchText.MINOR);
             GlitchText.vanishStaggered(sOpenList);
-            H.postDelayed(pw::dismiss, 90);
+            H.postDelayed(pw::dismiss, 150);
         } else {
             pw.dismiss();
         }

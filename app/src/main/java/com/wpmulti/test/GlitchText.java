@@ -1,9 +1,16 @@
 package com.wpmulti.test;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Shader;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.Editable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextWatcher;
@@ -29,42 +36,50 @@ import java.util.Random;
 import java.util.WeakHashMap;
 
 /**
- * GlitchText v3 (fase cy7) - glitch EVENT-DRIVEN yang TEPAT SASARAN.
+ * GlitchText v4 (fase cy8) - glitch EVENT-DRIVEN tepat sasaran +
+ * mekanisme perubahan UI, bukan dekorasi.
  *
  * PRINSIP UTAMA: "Sesuatu yang berubah - sesuatu itulah yang glitch."
  * Bukan seluruh UI. Frekuensi event = TINGGI, visual noise = RENDAH.
  *
- * PRIORITAS (cy7):
- *  1. EVENT GLITCH - dipicu perubahan nyata, target = elemen yang berubah:
- *     - ketik/hapus  : HANYA ghost shadow pada EditText itu (cursor/IME
- *                      aman); TIDAK lagi mengglitch section sekitar.
- *     - teks dinamis : span HANYA pada region yang berubah (start,count
- *                      dari onTextChanged) - bukan acak di mana saja.
- *     - dropdown     : GlitchDropdown (popup custom) materialize /
- *                      disintegrate + pulse mikro selama terbuka.
- *     - dialog       : window animation flicker (materialize/disintegrate).
- *     - navbar       : item yang kehilangan & mendapat active state glitch
- *                      MASING-MASING; pill TIDAK di-alpha-flicker (artifact
- *                      kotak = layer clipping shadow elevation).
- *     - page         : pageTransition - A terkorosi per-fragment, B
- *                      direkonstruksi dari fragment (bukan slide/fade).
- *     - config/chip  : row/chip yang muncul/hilang, bukan list-nya.
- *  2. AMBIENT WANDER - 1 target / 950-1500ms, DIJEDA 1.5 dtk setelah
- *     event glitch (markEvent). Atmosfer saja, BUKAN pengganti event.
+ * PERBAIKAN cy8 (di atas cy7):
  *
- * CLEANUP KERAS (cy7): semua langkah efek lewat step() -> Handler H dengan
- * pelacakan per-view (POSTED) + baseline (BASE). stop()/cancelFor(view)
- * membatalkan langkah tertunda dan MENGEMBALIKAN alpha/translation/scale
- * baseline - tidak ada state nyangkut, tidak ada layer tertinggal.
- * Antar-langkah deterministik: rantai terakhir SELALU nilai final.
+ *  1. FIX DROPDOWN DEAD CODE: cabang Spinner di installTouch dulu berada
+ *     SETELAH cabang ViewGroup (Spinner ADALAH ViewGroup) -> tidak pernah
+ *     dijalankan -> yang terbuka popup platform biasa. Kini Spinner
+ *     dicek PERTAMA, GlitchDropdown benar-benar aktif.
  *
- * THROTTLE: per-node 300ms (anti-stampede chip sesi/counter tick) + token
- * bucket global 8 burst / 200ms untuk jalur watcher (API eksplisit selalu
- * jalan). Guard TextUtils.equals melindungi teks dinamis saat restore.
+ *  2. GUARD ELEVATION (fix artifact KOTAK di pill nav / HUD): semua efek
+ *     berbasis alpha (glitchView/glitchAppear/glitchDisappear/materialize
+ *     staggered/page transition) MENOLKAN elevation view -> 0 selama
+ *     efek, lalu memulihkannya deterministik (BASE kini menyimpan
+ *     {alpha, tx, scaleX, ELEVATION}). Alpha < 1 pada view ber-elevation
+ *     memaksa offscreen layer yang ter-clip bounds persegi = shadow
+ *     rusak berbentuk KOTAK (terlihat di sekitar floating navbar).
  *
- * logView 100% BERSIH (walk/collect/burst melewatinya). Aksesibilitas:
- * setAnimScale(0) mematikan SEMUA efek dan pageTransition langsung final
- * tanpa meninggalkan alpha/transform.
+ *  3. INPUT CORRUPTION PER KARAKTER: ketik/hapus pada EditText kini
+ *     meng-span REGION yang berubah (insert: [start, start+count),
+ *     hapus: "seam" [start-1, start+1)) via Editable.setSpan -
+ *     TANPA setText, cursor/selection/IME/focus tak tersentuh. Span
+ *     dilepas terjadwal 120-180ms, tracked per-view, dibersihkan stop().
+ *
+ *  4. SCANLINE OVERLAY: lapisan scanline sementara via ViewOverlay
+ *     (tidak menyentuh layout) - dipakai dropdown saat materialize/
+ *     disintegrate, dialog, dan page transition (MAJOR).
+ *
+ *  5. PAGE TRANSITION REWORK: 7 fase - micro displacement -> korupsi ->
+ *     kehilangan struktur -> pecah + swap (scanline menyapu) -> fragmen
+ *     B menyala staggered -> rekonstruksi teks -> stabil. Elevation kartu
+ *     dijaga (tidak ada kotak), logView DIKECUALIKAN dari fragmen
+ *     (permukaan log selalu stabil).
+ *
+ *  6. SEMUA efek lewat step() yang terlacak: micro-squeeze & shadow-swap
+ *     MAJOR yang dulu pakai postDelayed liar kini ikut framework
+ *     (cancelFor/stop memulihkan SEMUA state).
+ *
+ * logView 100% BERSIH (walk/collect/burst/fragmen melewatinya).
+ * Aksesibilitas: setAnimScale(0) mematikan SEMUA efek dan semua jalur
+ * berakhir langsung di state final tanpa alpha/transform/shadow nyangkut.
  */
 public final class GlitchText {
 
@@ -105,7 +120,7 @@ public final class GlitchText {
         final WeakReference<TextView> ref;
         final boolean hot;       // judul bold / teks utama -> lebih sering
         final boolean spannable; // false utk input & logView
-        final boolean input;     // true = EditText (ghost kilat saat ketik)
+        final boolean input;     // true = EditText (korupsi region saat ketik)
         final boolean hasShadow; // baseline shadow ada (false = EditText)
         final float baseRadius, baseDx, baseDy;
         final int baseShadowColor;
@@ -133,6 +148,15 @@ public final class GlitchText {
     /** TextView yang sedang kilat shadow -> node baseline-nya. */
     private static final IdentityHashMap<TextView, Node> SHADOWED =
             new IdentityHashMap<>();
+    /** Span korupsi sementara pada EditText yang sedang diketik. */
+    private static final WeakHashMap<EditText, ArrayList<Object>> INPUT_SPANS =
+            new WeakHashMap<>();
+    /** Runnable pelepas span input (dibatalkan saat span baru dipasang). */
+    private static final WeakHashMap<EditText, Runnable> INPUT_CLEAR =
+            new WeakHashMap<>();
+    /** Scanline overlay aktif per host (dilepas terjadwal / clearScanline). */
+    private static final WeakHashMap<View, Drawable> SCANLINES =
+            new WeakHashMap<>();
     private static final Handler H = new Handler(Looper.getMainLooper());
     private static final Random RND = new Random();
 
@@ -141,6 +165,7 @@ public final class GlitchText {
     private static int BURST_SHADOW_RED;   // kilat kanan (sisi R)
     private static int BURST_SHADOW_CYAN;  // kilat kiri (sisi C)
     private static int BLOCK_BG;           // blok datamosh acid transparan
+    private static int SCAN_COLOR;         // garis scanline (cyan 30%)
     private static float DENSITY;
     private static boolean running;
     private static boolean tickQueued;
@@ -149,8 +174,10 @@ public final class GlitchText {
      *  watcher lagi (TextWatcher onTextChanged -> burst -> setText ...). */
     private static boolean sApplying;
 
-    // ---------------- cleanup framework (cy7) ----------------
-    /** Baseline transform view yang sedang berefek: {alpha, tx, scaleX}. */
+    // ---------------- cleanup framework (cy7, diperluas cy8) ----------------
+    /** Baseline view yang sedang berefek:
+     *  {alpha, translationX, scaleX, ELEVATION} - elevation ikut
+     *  dipulihkan (guard artifact kotak pada view ber-elevation). */
     private static final WeakHashMap<View, float[]> BASE = new WeakHashMap<>();
     /** Langkah tertunda per view (bisa dibatalkan per view). */
     private static final WeakHashMap<View, ArrayList<Runnable>> POSTED =
@@ -172,6 +199,7 @@ public final class GlitchText {
         BURST_SHADOW_RED = ctx.getColor(R.color.glitch_shadow);
         BURST_SHADOW_CYAN = ctx.getColor(R.color.glitch_shadow_cyan);
         BLOCK_BG = ctx.getColor(R.color.glitch_block);
+        SCAN_COLOR = ctx.getColor(R.color.glitch_scan);
     }
 
     // ---------------- registry ----------------
@@ -188,45 +216,61 @@ public final class GlitchText {
     }
 
     /**
-     * Traverse pohon view: SEMUA TextView jadi anggota registry - dashboard,
-     * sesi, log, setelan, isi dialog sekaligus. EditText masuk mode INPUT
-     * (ghost saat ketik - TANPA menyentuh parent, cy7), logView dilewati
-     * BERSIH. Panggil ulang aman (dedup per referensi).
+     * Traverse pohon view: SEMUA TextView jadi anggota registry. EditText
+     * masuk mode INPUT (korupsi region saat ketik - cy8: span per karakter
+     * pada region yang berubah, cursor/IME aman), logView dilewati BERSIH.
+     * Panggil ulang aman (dedup per referensi).
      */
     public static void registerTree(View root) {
         if (root != null) walk(root);
     }
 
     /**
-     * Pasang glitch touch di SELURUH tree (cy7):
-     *  - Button/CheckBox: press = glitchNow MINOR (feedback tepat sasaran).
+     * Pasang glitch touch di SELURUH tree (cy8):
      *  - Spinner: sentuh = buka GlitchDropdown (popup custom) - dropdown
      *    materialize/disintegrate via glitch, BUKAN popup platform.
-     *  Panggil ulang aman (listener menimpa dirinya sendiri).
+     *    FIX: cabang Spinner dicek SEBELUM ViewGroup (Spinner ADALAH
+     *    ViewGroup - dulu cabang ini dead code, popup platform biasa
+     *    yang terbuka).
+     *  - Button/CheckBox: press = glitchNow MINOR + micro jitter
+     *    (feedback tepat sasaran pada tombol yang ditekan).
+     * Panggil ulang aman (listener menimpa dirinya sendiri).
      */
     public static void installTouch(View root) {
         if (root == null) return;
-        if (root instanceof ViewGroup) {
-            ViewGroup g = (ViewGroup) root;
-            for (int i = 0; i < g.getChildCount(); i++)
-                installTouch(g.getChildAt(i));
-            return;
-        }
+        // FIX cy8: Spinner HARUS dicek sebelum ViewGroup (Spinner
+        // extends AbsSpinner extends AdapterView extends ViewGroup).
         if (root instanceof Spinner) {
             final Spinner sp = (Spinner) root;
             sp.setOnTouchListener((v, ev) -> {
-                if (ev.getActionMasked() == MotionEvent.ACTION_UP) {
+                int a = ev.getActionMasked();
+                if (a == MotionEvent.ACTION_DOWN) {
+                    // press feedback pada spinner itu sendiri
+                    glitchJitter(sp, MINOR);
+                } else if (a == MotionEvent.ACTION_UP
+                        && ev.getX() >= 0 && ev.getX() <= v.getWidth()
+                        && ev.getY() >= 0 && ev.getY() <= v.getHeight()) {
                     GlitchDropdown.show(sp);
                 }
                 return true; // konsumsi: popup platform tidak dibuka
             });
             return;
         }
-        if (root instanceof Button && root instanceof TextView) {
+        if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++)
+                installTouch(g.getChildAt(i));
+            return;
+        }
+        if (root instanceof Button) {
             TextView b = (TextView) root;
             b.setOnTouchListener((v, ev) -> {
-                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN)
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    // cy8: press = korupsi teks tombol + micro displacement
+                    // (ripple tetap jalan - listener tidak konsumsi).
                     glitchNow((TextView) v, MINOR);
+                    glitchJitter(v, MINOR);
+                }
                 return false;
             });
         }
@@ -241,8 +285,8 @@ public final class GlitchText {
             if (tv.getId() == R.id.logView) return;
 
             if (tv instanceof EditText) {
-                // INPUT: ghost shadow saja saat ketik/hapus (cursor & IME
-                // aman). cy7: TIDAK menyentuh parent/section sekitar.
+                // INPUT: korupsi span region yang berubah saat ketik/hapus
+                // (cursor & IME aman - span tidak mengubah isi text).
                 Node n = new Node(new WeakReference<>(tv), false, false,
                         true, false, 0f, 0f, 0f, 0);
                 NODES.add(n);
@@ -258,7 +302,7 @@ public final class GlitchText {
                     true, 1f * d, 1f * d, 0f, THIN_SHADOW);
             NODES.add(n);
             // teks berubah (status, counter, hint, ...) = glitch MINOR
-            // pada REGION yang berubah (cy7, lihat GlitchWatcher).
+            // pada REGION yang berubah (lihat GlitchWatcher).
             tv.addTextChangedListener(new GlitchWatcher(n));
             return; // TextView tidak punya anak view
         }
@@ -272,9 +316,9 @@ public final class GlitchText {
 
     /**
      * Jadwalkan satu langkah efek pada view. Langkah pertama utk sebuah
-     * view mencatat baseline {alpha, translationX, scaleX} - dijamin
-     * dipulihkan oleh cancelFor/stop/restoreAllBase. Panggilan ini harus
-     * SEBELUM mutasi pertama agar baseline belum terubah.
+     * view mencatat baseline {alpha, translationX, scaleX, ELEVATION} -
+     * dijamin dipulihkan oleh cancelFor/stop/restoreAllBase/stepFinish.
+     * Panggilan ini harus SEBELUM mutasi pertama agar baseline murni.
      */
     private static void step(View v, long delay, Runnable r) {
         captureBase(v);
@@ -301,7 +345,34 @@ public final class GlitchText {
     private static void captureBase(View v) {
         if (BASE.containsKey(v)) return;
         BASE.put(v, new float[]{v.getAlpha(), v.getTranslationX(),
-                v.getScaleX()});
+                v.getScaleX(), v.getElevation()});
+    }
+
+    /**
+     * Langkah penutup efek transform: pulihkan alpha/translationX/scaleX/
+     * ELEVATION dari baseline lalu bersihkan entri. Semua efek alpha-based
+     * WAJIB berakhir di sini (deterministik, anti state nyangkut).
+     */
+    private static void stepFinish(View v, long delay) {
+        step(v, delay, () -> {
+            float[] b = BASE.remove(v);
+            v.setAlpha(b != null ? b[0] : 1f);
+            v.setTranslationX(b != null ? b[1] : v.getTranslationX());
+            v.setScaleX(b != null ? b[2] : 1f);
+            if (b != null) v.setElevation(b[3]);
+        });
+    }
+
+    /**
+     * Guard artifact KOTAK (cy8): panggil SEBELUM mutasi alpha pertama.
+     * View ber-elevation yang di-alpha < 1 dipaksa ke offscreen layer -
+     * shadow-nya ter-clip bounds persegi (kotak di sekitar pill nav/HUD).
+     * Elevation dinolkan selama efek; stepFinish/cancelFor/stop
+     * memulihkannya dari BASE.
+     */
+    private static void guardElevation(View v) {
+        captureBase(v);
+        if (v.getElevation() > 0f) v.setElevation(0f);
     }
 
     /** Batalkan SEMUA langkah tertunda satu view + pulihkan baseline. */
@@ -316,6 +387,7 @@ public final class GlitchText {
             v.setAlpha(b[0]);
             v.setTranslationX(b[1]);
             v.setScaleX(b[2]);
+            v.setElevation(b[3]);
         }
     }
 
@@ -328,6 +400,7 @@ public final class GlitchText {
             v.setAlpha(b[0]);
             v.setTranslationX(b[1]);
             v.setScaleX(b[2]);
+            v.setElevation(b[3]);
         }
         BASE.clear();
         POSTED.clear();
@@ -390,8 +463,9 @@ public final class GlitchText {
 
     /**
      * Glitch MAJOR pada sebuah region: burst MAJOR semua teks terdaftar +
-     * displacement container (translationX SAJA). Hanya utk perubahan
-     * BESAR (state engine, rekonstruksi list) - BUKAN event kecil.
+     * displacement container (translationX SAJA - tidak menyentuh alpha,
+     * aman utk kartu ber-elevation). Hanya utk perubahan BESAR (state
+     * engine, rekonstruksi list) - BUKAN event kecil.
      */
     public static void glitchMajor(View root) {
         if (root == null || !fxAllowed()) return;
@@ -401,15 +475,15 @@ public final class GlitchText {
 
     /**
      * Flicker alpha + displacement pada elemen non-teks / container.
-     * cy7: DIHINDARI pada view ber-elevation (pill nav, HUD) - alpha < 1
-     * memaksa offscreen layer yang ter-clip di bounds persegi sehingga
-     * shadow elevation terpotong = ARTIFACT KOTAK. Gunakan glitchJitter
-     * untuk view itu. Rantai berakhir PASTI di alpha 1f.
+     * GUARD ELEVATION (cy8): elevation view dinolkan selama flicker lalu
+     * dipulihkan stepFinish - view ber-elevation (HUD, kartu) tidak lagi
+     * meninggalkan artifact kotak. Rantai berakhir PASTI di baseline.
      */
     public static void glitchView(View v, int level) {
         if (v == null || !fxAllowed()) return;
         markEvent();
         v.animate().cancel();
+        guardElevation(v);
         long t = 0;
         float[] seq;
         switch (level) {
@@ -428,7 +502,7 @@ public final class GlitchText {
             step(v, t, () -> v.setAlpha(alpha));
         }
         t += 45;
-        step(v, t, () -> v.setAlpha(1f));
+        stepFinish(v, t);
         glitchJitter(v, level);
     }
 
@@ -436,7 +510,7 @@ public final class GlitchText {
      * Displacement murni (translationX) - TIDAK memaksa layer, TIDAK
      * menyentuh alpha: aman utk view ber-elevation (pill nav). Rantai
      * deterministik: langkah terakhir SELALU mengembalikan translationX
-     * asli (tidak ada layout shift, tidak ada state nyangkut).
+     * baseline (tidak ada layout shift, tidak ada state nyangkut).
      */
     public static void glitchJitter(View v, int level) {
         if (v == null || !fxAllowed()) return;
@@ -452,28 +526,33 @@ public final class GlitchText {
             final float off = seq[i] * d;
             step(v, t, () -> v.setTranslationX(ox + off));
         }
-        step(v, t + 45, () -> v.setTranslationX(ox));
+        step(v, t + 45, () -> {
+            // pulihkan dari baseline bila ada (lebih tahan terhadap
+            // efek yang saling tumpang tindih), selain itu posisi awal.
+            float[] b = BASE.get(v);
+            v.setTranslationX(b != null ? b[1] : ox);
+        });
     }
 
     /**
      * "Muncul karena glitch": flicker alpha + squeeze-in + jitter + burst
      * MEDIUM subtree - dipakai saat row config/chip sesi/HUD baru dirender.
-     * Berakhir PASTI di alpha 1f, scale 1f. JANGAN dipakai untuk view
-     * ber-elevation (pakai glitchJitter + glitchTree saja).
+     * GUARD ELEVATION: HUD (elevation 8dp) muncul tanpa artifact kotak.
+     * Berakhir PASTI di alpha/scale/elevation baseline.
      */
     public static void glitchAppear(View v) {
         if (v == null || !fxAllowed()) return;
         markEvent();
         glitchTree(v, MEDIUM);
         v.animate().cancel();
-        captureBase(v);
+        guardElevation(v);
         v.setAlpha(0f);
         v.setScaleX(0.97f);
         step(v, 40,  () -> v.setAlpha(0.9f));
         step(v, 85,  () -> v.setAlpha(0.15f));
         step(v, 130, () -> v.setAlpha(0.75f));
         step(v, 170, () -> v.setAlpha(0.3f));
-        step(v, 215, () -> { v.setAlpha(1f); v.setScaleX(1f); });
+        stepFinish(v, 215);
         glitchJitter(v, MEDIUM);
     }
 
@@ -487,7 +566,7 @@ public final class GlitchText {
         markEvent();
         glitchTree(v, MINOR);
         v.animate().cancel();
-        captureBase(v);
+        guardElevation(v);
         v.setAlpha(0.25f);
         step(v, 35,  () -> v.setAlpha(0.8f));
         step(v, 70,  () -> v.setAlpha(0.1f));
@@ -495,12 +574,29 @@ public final class GlitchText {
         glitchJitter(v, MINOR);
     }
 
+    /**
+     * State elemen berubah (enabled/disabled tombol, dst) - elemen itu
+     * sendiri korupsi singkat lalu merekonstruksi ke state barunya.
+     * Dipanggil SEBELUM setEnabled agar urutan visualnya
+     * corrupt -> state baru (bukan sebaliknya).
+     */
+    public static void glitchStateChange(View v, boolean enabled) {
+        if (v == null || !fxAllowed()) return;
+        markEvent();
+        glitchView(v, enabled ? MEDIUM : MINOR);
+        if (v instanceof TextView) {
+            glitchNow((TextView) v, enabled ? MEDIUM : MINOR);
+        }
+        glitchJitter(v, MINOR);
+    }
+
     // ---------------- staggered fragment (dropdown & page) ----------------
 
     /**
      * Materialize staggered utk ANAK-ANAK container (item dropdown /
-     * fragment halaman): tiap anak flicker-up + jitter mikro bergeser
+     * baris dialog): tiap anak flicker-up + displacement mikro bergeser
      * waktu 16ms - kesan "fragment berkumpul membentuk elemen".
+     * Elevation tiap anak dijaga (guard kotak).
      */
     public static void materializeStaggered(ViewGroup g) {
         if (g == null || !fxAllowed()) return;
@@ -508,10 +604,11 @@ public final class GlitchText {
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
             final int d = i * 16;
-            step(c, d, () -> c.setAlpha(0.15f));
+            guardElevation(c);
+            step(c, d,      () -> c.setAlpha(0.15f));
             step(c, d + 26, () -> c.setAlpha(0.7f));
             step(c, d + 52, () -> c.setAlpha(0.3f));
-            step(c, d + 78, () -> { c.setAlpha(1f); c.setTranslationX(0f); });
+            stepFinish(c, d + 78);
             if (i % 2 == 0) {
                 step(c, d + 10, () -> c.setTranslationX(3f * DENSITY));
                 step(c, d + 40, () -> c.setTranslationX(-2f * DENSITY));
@@ -529,6 +626,7 @@ public final class GlitchText {
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
             final int d = i * 12;
+            guardElevation(c);
             step(c, d,      () -> c.setAlpha(0.5f));
             step(c, d + 24, () -> c.setAlpha(0.9f));
             step(c, d + 48, () -> c.setAlpha(0f));
@@ -537,7 +635,8 @@ public final class GlitchText {
 
     /**
      * Satu denyut mikro pada SATU anak acak container yang terlihat -
-     * dipakai GlitchDropdown sbg "pulse" berkala selama dropdown terbuka.
+     * dipakai GlitchDropdown sbg "pulse" berkala selama dropdown terbuka
+     * (dropdown terasa unstable tanpa mengganggu pemilihan).
      * Mengembalikan true bila ada anak yang dikenai efek.
      */
     public static boolean dropdownPulse(ViewGroup g) {
@@ -550,6 +649,7 @@ public final class GlitchText {
         if (vis.isEmpty()) return false;
         View target = vis.get(RND.nextInt(vis.size()));
         glitchView(target, MINOR);
+        glitchJitter(target, MINOR); // micro displacement: "unstable"
         if (target instanceof ViewGroup) {
             // satu TextView di dalam item ikut korupsi (span neon kecil)
             ArrayList<TextView> tvs = new ArrayList<>();
@@ -566,71 +666,143 @@ public final class GlitchText {
         return true;
     }
 
-    // ---------------- page transition (cy7) ----------------
+    // ---------------- scanline overlay (cy8) ----------------
 
-    /** Fragment halaman = anak-anak konten scroll (bukan scroll itu). */
+    /**
+     * Lapisan scanline sementara DI ATAS host via ViewOverlay - tidak
+     * menyentuh layout, tidak mengganggu input, tidak meninggalkan apa
+     * pun setelah dilepas. Dipakai dropdown (materialize/disintegrate),
+     * dialog, dan page transition (MAJOR). Idempotent per host;
+     * guarantee: terlepas setelah durationMs ATAU clearScanline/stop().
+     */
+    public static void scanline(View host, int durationMs) {
+        scanline(host, durationMs, 100);
+    }
+
+    /** Scanline dengan alpha garis khusus (0-255). */
+    public static void scanline(View host, int durationMs, int lineAlpha) {
+        if (host == null || !fxAllowed()) return;
+        clearScanline(host); // idempotent - tidak menumpuk
+        int w = host.getWidth();
+        int h = host.getHeight();
+        if (w <= 0 || h <= 0) return; // belum layout: lewati diam-diam
+        Bitmap b = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint();
+        p.setColor(SCAN_COLOR);
+        c.drawRect(0f, 0f, 4f, 1f, p);
+        BitmapDrawable d = new BitmapDrawable(host.getResources(), b);
+        d.setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
+        d.setAlpha(Math.max(0, Math.min(255, lineAlpha)));
+        d.setBounds(0, 0, w, h);
+        try {
+            host.getOverlay().add(d);
+        } catch (Exception ignored) {
+            return; // overlay tidak didukung: efek dilewati, bukan crash
+        }
+        SCANLINES.put(host, d);
+        H.postDelayed(() -> clearScanline(host), durationMs);
+    }
+
+    /** Lepas scanline host (idempotent, aman utk host yang sudah mati). */
+    public static void clearScanline(View host) {
+        if (host == null) return;
+        Drawable d = SCANLINES.remove(host);
+        if (d == null) return;
+        try {
+            host.getOverlay().remove(d);
+        } catch (Exception ignored) {}
+    }
+
+    // ---------------- page transition (cy7, rework cy8) ----------------
+
+    /** Fragment halaman = anak-anak konten scroll (bukan scroll itu).
+     *  logView & logScroll DIKECUALIKAN - permukaan log selalu stabil
+     *  & readable (permintaan eksplisit: log 100% bebas glitch). */
     private static List<View> fragments(View page) {
         List<View> out = new ArrayList<>();
         if (page instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) page;
             if (g.getChildCount() == 1 && g.getChildAt(0) instanceof ViewGroup) {
                 ViewGroup inner = (ViewGroup) g.getChildAt(0);
-                for (int i = 0; i < inner.getChildCount(); i++)
-                    out.add(inner.getChildAt(i));
+                for (int i = 0; i < inner.getChildCount(); i++) {
+                    View c = inner.getChildAt(i);
+                    if (isLogSurface(c)) continue; // log stabil
+                    out.add(c);
+                }
             } else {
-                for (int i = 0; i < g.getChildCount(); i++)
-                    out.add(g.getChildAt(i));
+                for (int i = 0; i < g.getChildCount(); i++) {
+                    View c = g.getChildAt(i);
+                    if (isLogSurface(c)) continue; // log stabil
+                    out.add(c);
+                }
             }
         }
         return out;
     }
 
+    /** Halaman Log: logScroll (berisi logView) tidak ikut transisi. */
+    private static boolean isLogSurface(View v) {
+        int id = v.getId();
+        return id == R.id.logView || id == R.id.logScroll;
+    }
+
     /** Generation counter transisi - transisi baru membatalkan yang lama. */
     private static long sPageGen = 0;
 
-    private static void flickerDown(View v, long gen) {
-        captureBase(v);
-        step(v, 30,  () -> { if (sPageGen == gen) v.setAlpha(0.55f); });
-        step(v, 60,  () -> { if (sPageGen == gen) v.setAlpha(0.15f); });
-        step(v, 90,  () -> { if (sPageGen == gen) v.setAlpha(0.7f); });
-        step(v, 120, () -> { if (sPageGen == gen) v.setAlpha(0.25f); });
-        step(v, 150, () -> { if (sPageGen == gen) v.setAlpha(0f); });
+    /** Persiapan fragmen utk fase alpha: baseline + guard elevation. */
+    private static void prepareFrag(View f) {
+        guardElevation(f);
     }
 
-    private static void flickerUp(View v, long gen) {
-        captureBase(v);
-        step(v, 30,  () -> { if (sPageGen == gen) v.setAlpha(0.7f); });
-        step(v, 60,  () -> { if (sPageGen == gen) v.setAlpha(0.2f); });
-        step(v, 90,  () -> { if (sPageGen == gen) v.setAlpha(0.85f); });
-        step(v, 120, () -> { if (sPageGen == gen) v.setAlpha(0.4f); });
-        step(v, 150, () -> {
-            if (sPageGen == gen) {
-                v.setAlpha(1f);
-                v.setTranslationX(0f);
-            }
-        });
-        step(v, 34, () -> { if (sPageGen == gen)
-                v.setTranslationX(2f * DENSITY); });
-        step(v, 66, () -> { if (sPageGen == gen)
-                v.setTranslationX(-1.5f * DENSITY); });
-    }
-
-    private static void resetFrags(List<View> frags) {
-        for (View f : frags) {
-            f.setAlpha(1f);
-            f.setTranslationX(0f);
-        }
+    /** Persiapan fragmen gelap (page masuk): baseline + elev 0 + alpha 0. */
+    private static void prepareFragDark(View f) {
+        guardElevation(f);
+        f.setAlpha(0f);
     }
 
     /**
-     * Transisi halaman "A terkorosi -> B direkonstruksi" (cy7):
-     *   0-170ms  : A burst MAJOR + jitter, fragment-nya pecah staggered
-     *   ~180ms   : A disembunyikan (alpha & transform fragment di-reset)
-     *   200-540ms: fragment B menyala staggered + burst MAJOR di B
-     *   560ms    : B stabil (semua alpha 1f, translation 0)
-     * CEPAT BERGANTI TAB: generation counter - langkah gen lama no-op,
-     * state visibility sudah diatur pemanggil. animScale 0 -> langsung
-     * final tanpa efek dan tanpa state tertinggal.
+     * Paksa fragmen ke state final bersih: alpha 1, translation 0,
+     * scale 1, elevation baseline, langkah tertunda dibatalkan.
+     */
+    private static void finishFrag(View f) {
+        float[] b = BASE.remove(f);
+        f.setAlpha(1f);
+        f.setTranslationX(0f);
+        f.setScaleX(1f);
+        if (b != null) f.setElevation(b[3]);
+        ArrayList<Runnable> list = POSTED.remove(f);
+        if (list != null) {
+            for (Runnable r : list) H.removeCallbacks(r);
+        }
+    }
+
+    private static void resetFrags(List<View> frags) {
+        for (View f : frags) finishFrag(f);
+    }
+
+    /**
+     * Transisi halaman "A terkorosi sampai menjadi B" (rework cy8) -
+     * BUKAN slide, BUKAN fade, BUKAN shake kecil:
+     *
+     *   FASE 1  0-90ms    A mulai rusak: micro displacement per fragmen
+     *                      + korupsi teks MAJOR serentak.
+     *   FASE 2  90-200ms  bagian A kehilangan struktur: alpha jatuh
+     *                      staggered + displacement membesar.
+     *   FASE 3  200-280ms A pecah total (alpha nyaris 0) -> swap:
+     *                      A GONE, state fragmennya di-reset bersih.
+     *   FASE 4  280-300ms dead-air: scanline menyapu area konten,
+     *                      fragmen B disiapkan gelap.
+     *   FASE 5  300-470ms fragmen B menyala staggered dari kegelapan
+     *                      (flicker + displacement bergantian arah).
+     *   FASE 6  470-560ms rekonstruksi: teks B terkorupsi lalu pulih.
+     *   FASE 7  settle    B stabil: alpha/translation/elevation normal,
+     *                      scanline dilepas, tidak ada sisa apa pun.
+     *
+     * Kartu ber-elevation dijaga (tidak ada kotak); logView dikecualikan
+     * (log selalu stabil). CEPAT BERGANTI TAB: generation counter -
+     * langkah gen lama no-op, state visibility sudah diatur pemanggil.
+     * animScale 0 -> langsung final tanpa efek dan tanpa sisa state.
      */
     public static void pageTransition(View out, View in) {
         if (in == null) return;
@@ -642,10 +814,8 @@ public final class GlitchText {
         // VISIBLE - penyembunyiannya MILIK transisi ini (setelah fase
         // korupsi). Di luar efek, hanya jamin state final bersih.
         if (!fxAllowed()) {
-            if (out != null && out != in) {
-                out.setVisibility(View.GONE);
-                resetFrags(fragments(out));
-            }
+            out.setVisibility(View.GONE);
+            resetFrags(fragments(out));
             resetFrags(fragments(in));
             return;
         }
@@ -653,45 +823,106 @@ public final class GlitchText {
         final long gen = ++sPageGen;
         final List<View> outFrags = fragments(out);
         final List<View> inFrags = fragments(in);
+        // Host scanline = parent konten (melayang di atas kedua halaman);
+        // transisi baru membatalkan overlay transisi lama.
+        final ViewGroup host = in.getParent() instanceof ViewGroup
+                ? (ViewGroup) in.getParent() : null;
+        if (host != null) clearScanline(host);
 
-        // FASE 1 - A terkorosi: teks korup serentak + micro displacement,
-        // lalu fragment pecah staggered (alpha turun bertahap per fragment).
+        // FASE 1 - A mulai rusak: micro displacement per fragmen.
         glitchTree(out, MAJOR);
-        glitchJitter(out, MAJOR);
         int i = 0;
         for (View f : outFrags) {
             final View ff = f;
-            final int d = i * 22;
-            step(ff, d, () -> { if (sPageGen == gen) flickerDown(ff, gen); });
+            final int d = i * 15;
+            step(ff, d,      () -> { if (sPageGen == gen)
+                    ff.setTranslationX(2f * DENSITY); });
+            step(ff, d + 45, () -> { if (sPageGen == gen)
+                    ff.setTranslationX(-1.5f * DENSITY); });
             i++;
         }
-        // FASE 2 - swap: sembunyikan A, bersihkan sisa transformnya.
-        step(out, 185, () -> {
+
+        // FASE 2 - A kehilangan struktur: alpha jatuh staggered +
+        // displacement membesar (elevation dinolkan dulu: anti kotak).
+        i = 0;
+        for (View f : outFrags) {
+            final View ff = f;
+            prepareFrag(ff);
+            final int d = 90 + i * 18;
+            step(ff, d,      () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.55f);
+                ff.setTranslationX(3.5f * DENSITY);
+            }});
+            step(ff, d + 40, () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.2f);
+                ff.setTranslationX(-2.5f * DENSITY);
+            }});
+            step(ff, d + 80, () -> { if (sPageGen == gen)
+                    ff.setAlpha(0.65f); });
+            i++;
+        }
+
+        // FASE 3 - A pecah total: korupsi pamungkas lalu swap.
+        step(out, 205, () -> { if (sPageGen == gen)
+                glitchTree(out, MAJOR); });
+        i = 0;
+        for (View f : outFrags) {
+            final View ff = f;
+            final int d = 200 + i * 14;
+            step(ff, d, () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.1f);
+                ff.setTranslationX(5f * DENSITY);
+            }});
+            i++;
+        }
+        step(out, 280, () -> {
             if (sPageGen != gen) return;
             out.setVisibility(View.GONE);
-            resetFrags(outFrags);
-            out.setTranslationX(0f);
+            for (View f : outFrags) finishFrag(f);
         });
 
-        // FASE 3 - B materialize dari fragment: anak-anak mulai gelap,
-        // menyala staggered + burst MAJOR teks saat rekonstruksi.
-        for (View f : inFrags) f.setAlpha(0f);
+        // FASE 4 - dead-air: scanline menyapu, B disiapkan gelap.
+        if (host != null) {
+            final ViewGroup h = host;
+            step(in, 285, () -> { if (sPageGen == gen)
+                    scanline(h, 250, 120); });
+        }
+        for (View f : inFrags) prepareFragDark(f);
+
+        // FASE 5 - fragmen B menyala staggered dari kegelapan.
         int j = 0;
         for (View f : inFrags) {
             final View ff = f;
-            final int d = 210 + j * 24;
-            step(ff, d, () -> { if (sPageGen == gen) flickerUp(ff, gen); });
+            final int d = 300 + j * 26;
+            step(ff, d,       () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.4f);
+                ff.setTranslationX(3f * DENSITY);
+            }});
+            step(ff, d + 45,  () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.85f);
+                ff.setTranslationX(-2f * DENSITY);
+            }});
+            step(ff, d + 90,  () -> { if (sPageGen == gen) {
+                ff.setAlpha(0.25f);
+                ff.setTranslationX(1.5f * DENSITY);
+            }});
+            step(ff, d + 130, () -> { if (sPageGen == gen) {
+                ff.setAlpha(1f);
+                ff.setTranslationX(0f);
+            }});
             j++;
         }
-        step(in, 220, () -> { if (sPageGen == gen) {
-            glitchTree(in, MAJOR);
-            glitchJitter(in, MAJOR);
-        }});
-        // FASE 4 - stabil: semua alpha/translation kembali normal.
-        step(in, 560, () -> {
+
+        // FASE 6 - rekonstruksi: teks B terkorupsi lalu pulih sendiri.
+        step(in, 470, () -> { if (sPageGen == gen)
+                glitchTree(in, MAJOR); });
+
+        // FASE 7 - B stabil: semua kembali normal, scanline dilepas.
+        final long settleT = 300 + Math.max(0, j - 1) * 26 + 130 + 50;
+        step(in, settleT, () -> {
             if (sPageGen != gen) return;
-            resetFrags(inFrags);
-            in.setTranslationX(0f);
+            for (View f : inFrags) finishFrag(f);
+            if (host != null) clearScanline(host);
         });
     }
 
@@ -749,6 +980,17 @@ public final class GlitchText {
         tickQueued = false;
         restoreQueued = false;
         POSTED.clear();
+        // scanline overlay: pastikan tidak ada lapisan tertinggal
+        if (!SCANLINES.isEmpty()) {
+            ArrayList<View> hosts = new ArrayList<>(SCANLINES.keySet());
+            for (View v : hosts) clearScanline(v);
+        }
+        // span korupsi input: lepas semua dari EditText aktif
+        if (!INPUT_SPANS.isEmpty()) {
+            ArrayList<EditText> ets = new ArrayList<>(INPUT_SPANS.keySet());
+            for (EditText et : ets) clearInputSpans(et, true);
+        }
+        INPUT_CLEAR.clear();
         restoreNow();
         restoreAllBase();
     }
@@ -770,7 +1012,7 @@ public final class GlitchText {
             tickQueued = false;
             if (!running) return;
             purge();
-            // cy7: ambient DIJEDA setelah event glitch - event adalah
+            // ambient DIJEDA setelah event glitch - event adalah
             // bintangnya, ambient hanya atmosfer (1 target / 950-1500ms).
             long now = SystemClock.uptimeMillis();
             if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && fxAllowed()) {
@@ -818,7 +1060,7 @@ public final class GlitchText {
     }
 
     /**
-     * Burst dgn REGION eksplisit (cy7 - inti "tepat sasaran"): rs/re =
+     * Burst dgn REGION eksplisit (inti "tepat sasaran"): rs/re =
      * range karakter yang BERUBAH (dari onTextChanged). Hanya region itu
      * yang di-span; sisanya tidak disentuh. rs < 0 = range acak (ambien).
      * Deletion (region kosong) -> "seam" di sekitar posisi hapus.
@@ -873,19 +1115,17 @@ public final class GlitchText {
         float d = DENSITY;
         if (level == MAJOR) {
             // Double-flicker RGB: merah kanan -> cyan kiri -> (restore).
-            // Guard SHADOWED.get(v2)==node: bila restore terkonsolidasi
-            // sudah berlalu sebelum swap, swap DILEWATI agar tidak ada
-            // bayangan cyan yang nyangkut setelah baseline dipulihkan.
+            // cy8: swap ikut framework step() - dibatalkan bersih oleh
+            // stop() (dulu postDelayed liar pada view).
             tv.setShadowLayer(1.2f * d, 2f * d, 0f, BURST_SHADOW_RED);
             final TextView ftv = tv;
             final Node fn = node;
-            ftv.postDelayed(() -> {
-                TextView v2 = fn.ref.get();
-                if (v2 != null && SHADOWED.get(v2) == fn) {
-                    v2.setShadowLayer(1.2f * d, -2f * d, 0f,
+            step(ftv, 45, () -> {
+                if (SHADOWED.get(ftv) == fn) {
+                    ftv.setShadowLayer(1.2f * d, -2f * d, 0f,
                             BURST_SHADOW_CYAN);
                 }
-            }, 45);
+            });
             SHADOWED.put(tv, node);
         } else {
             // Kilat shadow RGB bergantian arah: kiri = cyan, kanan = merah.
@@ -895,20 +1135,24 @@ public final class GlitchText {
             SHADOWED.put(tv, node);
         }
 
-        // Variasi: micro squeeze (MEDIUM 1/4, MAJOR 1/3) - pulih ke 1f
-        // deterministik; hanya TextView spannable (EditText & tombol aman).
+        // Variasi: micro squeeze (MEDIUM 1/4, MAJOR 1/3) - pulih ke
+        // baseline deterministik via step() (cy8: dulu postDelayed liar);
+        // hanya TextView spannable (EditText & tombol aman).
         if (node.spannable && level >= MEDIUM
                 && RND.nextInt(level == MAJOR ? 3 : 4) == 0) {
-            tv.setScaleX(RND.nextBoolean() ? 1.015f : 0.985f);
             final TextView stv = tv;
-            stv.postDelayed(() -> stv.setScaleX(1f), 90 + RND.nextInt(60));
+            captureBase(stv);
+            stv.setScaleX(RND.nextBoolean() ? 1.015f : 0.985f);
+            step(stv, 90 + RND.nextInt(60), () -> {
+                float[] b = BASE.get(stv);
+                stv.setScaleX(b != null ? b[2] : 1f);
+            });
         }
     }
 
     /**
-     * Ghost kilat pada EditText saat mengetik/menghapus (cy7) - TANPA
-     * span/setText (cursor, selection, IME aman) dan TANPA menyentuh
-     * parent. Merah = penghapusan (disintegrate), neon = pengetikan.
+     * Ghost kilat shadow pada EditText (merah = penghapusan/disintegrate,
+     * neon = pengetikan) - TANPA setText (cursor, selection, IME aman).
      */
     private static void inputFlash(TextView tv, boolean deletion) {
         float d = DENSITY;
@@ -919,6 +1163,96 @@ public final class GlitchText {
         SHADOWED.put(tv, new Node(new WeakReference<>(tv), false, false,
                 true, false, 0f, 0f, 0f, 0));
         scheduleRestore(restoreFor(MINOR));
+    }
+
+    /**
+     * KORUPSI INPUT PER KARAKTER (cy8 - presisi yang diminta):
+     *  - insert  : span neon + blok acid HANYA pada [start, start+count)
+     *  - hapus   : "seam" korosi merah pada [start-1, start+1) +
+     *              strike-through (karakter yang hilang terkorosi)
+     *  - paste   : region besar -> level terasa lebih kuat
+     * Semua via Editable.setSpan pada teks yang ADA - setText tidak
+     * pernah dipanggil: cursor, selection, posisi, IME, focus, dan
+     * ukuran view TIDAK tersentuh. Span dilepas 120-180ms kemudian
+     * (terjadwal & terlacak; dibersihkan juga oleh stop()).
+     */
+    private static void inputCorrupt(TextView tv, int start, int count,
+            int before) {
+        final boolean deletion = count == 0 && before > 0;
+        final EditText et = (EditText) tv;
+        Editable e = et.getEditableText();
+        if (e != null && e.length() > 0) {
+            // lepas span kilatan sebelumnya (deterministik, tanpa tumpukan)
+            clearInputSpans(et, true);
+            int from, to;
+            if (count > 0) {
+                from = Math.max(0, start);
+                to = Math.min(e.length(), start + count);
+            } else {
+                // seam di sekitar posisi hapus (region yang "terkorosi")
+                from = Math.max(0, start - 1);
+                to = Math.min(e.length(), start + 1);
+            }
+            if (to > from) {
+                ArrayList<Object> spans = new ArrayList<>(3);
+                int color = deletion
+                        ? BURST_SHADOW_RED
+                        : PALETTE[RND.nextInt(PALETTE.length)];
+                Object fg = new ForegroundColorSpan(color);
+                e.setSpan(fg, from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                spans.add(fg);
+                // blok datamosh: selalu utk deletion (disintegrate),
+                // kadang utk insert (merdekat regional)
+                if (deletion || RND.nextInt(3) == 0) {
+                    Object bg = new BackgroundColorSpan(BLOCK_BG);
+                    e.setSpan(bg, from, to,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    spans.add(bg);
+                }
+                // strike-through: karakter yang berubah terasa "rusak"
+                if (deletion && RND.nextInt(2) == 0) {
+                    Object strike = new StrikethroughSpan();
+                    e.setSpan(strike, from, to,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    spans.add(strike);
+                }
+                INPUT_SPANS.put(et, spans);
+                // jadwalkan pelepasan (region pulih = rekonstruksi)
+                Runnable prev = INPUT_CLEAR.remove(et);
+                if (prev != null) H.removeCallbacks(prev);
+                final Runnable clear = new Runnable() {
+                    @Override public void run() {
+                        INPUT_CLEAR.remove(et);
+                        clearInputSpans(et, false);
+                    }
+                };
+                INPUT_CLEAR.put(et, clear);
+                H.postDelayed(clear, 120 + RND.nextInt(60));
+            }
+        }
+        // ghost shadow RGB menyertai span (merah utk penghapusan)
+        inputFlash(tv, deletion);
+    }
+
+    /**
+     * Lepas span korupsi input dari sebuah EditText.
+     * cancelScheduled=true juga membatalkan runnable pelepasan tertunda.
+     */
+    private static void clearInputSpans(EditText et, boolean cancelScheduled) {
+        if (et == null) return;
+        if (cancelScheduled) {
+            Runnable c = INPUT_CLEAR.remove(et);
+            if (c != null) H.removeCallbacks(c);
+        }
+        ArrayList<Object> spans = INPUT_SPANS.remove(et);
+        if (spans == null) return;
+        Editable e = et.getEditableText();
+        if (e == null) return;
+        for (Object s : spans) {
+            try {
+                e.removeSpan(s);
+            } catch (Exception ignored) {}
+        }
     }
 
     private static void restoreNow() {
@@ -973,7 +1307,7 @@ public final class GlitchText {
         return null;
     }
 
-    // ---------------- WATCHER (region-targeted, cy7) ----------------
+    // ---------------- WATCHER (region-targeted) ----------------
 
     // Token bucket global: batasi stampede burst watcher (chip sesi 20x
     // per tick, counter monitor) - API eksplisit TIDAK dibatasi bucket.
@@ -994,12 +1328,13 @@ public final class GlitchText {
     }
 
     /**
-     * Watcher massal cy7 - TEPAT SASARAN:
+     * Watcher massal - TEPAT SASARAN:
+     *  - EditText  : korupsi span PER REGION yang berubah pada EditText
+     *                itu saja (insert = karakter baru; hapus = seam korosi
+     *                merah). TANPA parent/section. Cursor & IME aman.
      *  - TextView  : span HANYA pada region yang berubah (start..start+count
      *                utk insert; "seam" sekitar posisi hapus utk deletion).
      *                Paste/replace besar (count > 3) = MEDIUM.
-     *  - EditText  : ghost kilat PADA EditText itu saja - deletion merah
-     *                (disintegrate), ketik neon. TANPA parent/section.
      * Throttle per-node 300ms + token bucket global mencegah stampede;
      * sApplying mencegah loop; fxAllowed mencegah burst saat tak terlihat.
      */
@@ -1022,8 +1357,8 @@ public final class GlitchText {
                 if (tv == null) return;
                 boolean deletion = ct == 0 && bf > 0;
                 if (node.input) {
-                    // Ketik/hapus = HANYA EditText itu (tepat sasaran).
-                    inputFlash(tv, deletion);
+                    // Ketik/hapus = korupsi region pada EditText ITU saja.
+                    inputCorrupt(tv, st, ct, bf);
                     markEvent();
                     return;
                 }
