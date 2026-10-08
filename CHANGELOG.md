@@ -4,6 +4,48 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.6] — 2026-10-08
+
+### Changed
+- **Optimasi mekanisme rendering UI — visual 100% identik** (audit
+  menyeluruh onDraw/Canvas/Paint/Bitmap/Shader/Path/invalidate/
+  requestLayout/Choreographer/frame callback/animasi/overlay/alokasi;
+  akar diverifikasi ke source AOSP; lihat docs/ARCHITECTURE.md §8):
+  - **Background = nol kerja UI**: flag `resumed` (onPause/onResume) —
+    thread monitor tetap mengambil data tiap 2 dtk (kontinuitas baseline
+    rate & timeline grafik tidak berubah) tetapi berhenti men-dispatch
+    `updateHeader` + seluruh blok UI dashboard (setText/layout/chips/
+    invalidate pada view yang tidak tergambar = kerja sia-sia).
+    Kontinuitas data grafik dijaga lewat `TrafficGraphView.insert()`
+    (sisip data tanpa invalidate).
+  - **Tint chip sesi hanya saat warna berubah**: `VectorDrawable
+    .setTintList` membandingkan identitas objek & `Drawable.setTint(int)`
+    selalu alokasi `ColorStateList` baru (AOSP 14: VectorDrawable:484,
+    GradientDrawable:1229) → dulu `invalidateSelf()` + alokasi CSL +
+    color-filter PER CHIP PER TICK walau warna sama; kini di-guard int
+    (`ChipVh.lastTint`).
+  - **`findViewById` chip sekali seumur chip** (holder `ChipVh`), bukan
+    3× per chip per tick 2 dtk (hingga 60 traversal hierarki/tick).
+  - **Grafik trafik datar tidak digambar ulang**: `addSample` melewatkan
+    `postInvalidate` bila buffer penuh + seluruh sampel homogen + nilai
+    baru = terakhir (output piksel identik; verifikasi homogenitas
+    O(CAP) hanya saat kandidat skip).
+  - **TICK ambient tanpa alokasi**: scratch list statis menggantikan
+    2 `ArrayList` baru per tick (950–1500ms selamanya).
+- Diverifikasi-optimal (tidak diubah): `VectorDrawable.setAlpha` no-op
+  bila nilai sama (denyut dot hanya redraw saat alpha kuantisasi berubah),
+  `TextView.setTextColor`/`View.setAlpha` no-op bila nilai sama, tidak
+  ada `setLayerType`/hardware layer/animated drawable, scanline bitmap
+  sudah sekali-alokasi (cy10.2). Glitch: frekuensi/intensitas/timing/
+  warna/posisi/ukuran TIDAK disentuh; ambient & event tetap seperti
+  cy8–cy10.3.
+
+### Pending (perlu konfirmasi user — docs/KNOWN_ISSUES.md §B K8/K9)
+- K8: guard `setTextIfChanged` utk `vpnStatsView`/`headerStats`/teks chip
+  sesi (menghentikan kilat saat nilai statis = perubahan frekuensi visual).
+- K9: lewati `fetchStatus`+parse JSON saat background (biaya: satu nilai
+  rate rata-rata pada tick pertama pasca-resume).
+
 ## [cy10.5] — 2026-10-08
 
 ### Fixed

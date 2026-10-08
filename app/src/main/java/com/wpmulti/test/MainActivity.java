@@ -106,7 +106,32 @@ public class MainActivity extends AppCompatActivity {
     // - dulu rebuild tiap 2 dtk membuat detail yang di-expand kolap
     // sendiri. prevSessAct = total tx+rx tick lalu, untuk mendeteksi
     // sesi yang aktif mengirim/menerima.
-    private final java.util.Map<Integer, View> chipViews = new java.util.HashMap<>();
+    private final java.util.Map<Integer, ChipVh> chipViews = new java.util.HashMap<>();
+
+    /**
+     * cy10.6: holder chip sesi — findViewById dilakukan SEKALI saat chip
+     * di-inflate (dulu 3 panggilan per chip per tick 2 dtk = traversal
+     * hierarki berulang), plus cache warna tint terakhir. AKAR: VectorDrawable
+     * .setTintList membandingkan IDENTITAS objek (state.mTint != tint),
+     * sedangkan Drawable.setTint(int) SELALU mengalokasikan ColorStateList
+     * .valueOf baru -> invalidateSelf() dijalankan per chip per tick WALAU
+     * warnanya sama (diverifikasi ke AOSP android-14 VectorDrawable:484,
+     * GradientDrawable:1229). Guard int: menghilangkan alokasi CSL +
+     * color-filter + redraw redundan; piksel identik (tint sama = hasil
+     * gambar sama).
+     */
+    private static final class ChipVh {
+        final View chip;
+        final View dot;
+        final TextView title;
+        final TextView detail;
+        int lastTint = Integer.MIN_VALUE;
+        ChipVh(View chip, View dot, TextView title, TextView detail) {
+            this.chip = chip; this.dot = dot;
+            this.title = title; this.detail = detail;
+        }
+    }
+
     private final java.util.Set<Integer> expandedSess = new java.util.HashSet<>();
     private final java.util.Map<Integer, Long> prevSessAct = new java.util.HashMap<>();
 
@@ -150,6 +175,17 @@ public class MainActivity extends AppCompatActivity {
     private final List<LogEntry> logLines = new ArrayList<>();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean monitorOn = false;
+
+    /**
+     * cy10.6: activity resumed? Thread monitor tetap mengambil data tiap
+     * 2 dtk (kontinuitas baseline rate & timeline grafik — perilaku data
+     * tidak berubah), tetapi TIDAK men-dispatch pekerjaan UI saat false:
+     * setText/layout/chips/invalidate pada view yang tidak tergambar =
+     * kerja sia-sia (background). Refresh UI kembali otomatis <= tick
+     * pertama setelah resume; perubahan state VPN/engine tetap masuk lewat
+     * receiver (jalur event-driven, tidak lewat monitor).
+     */
+    private volatile boolean resumed = false;
     private String logLevelSel = "Semua";
     private String filterText = "";
 
@@ -1885,7 +1921,11 @@ public class MainActivity extends AppCompatActivity {
                 long rssKb = readVmRssKb();
                 String ramStr = rssKb >= 0 ? (rssKb / 1024) + " MB" : "-";
                 final String fRam = ramStr, fCpu = cpuStr;
-                updateHeader(fRam, fCpu);
+                // cy10.6: header hanya di-dispatch saat activity terlihat
+                // (resumed) — setText pada view invisible = layout churn
+                // sia-sia; header segar kembali <= tick pertama setelah
+                // resume (tak terlihat siapa pun selama background).
+                if (resumed) updateHeader(fRam, fCpu);
                 // Tick ringan (header saja) saat user tidak di halaman
                 // Dashboard: GET_STATUS (binder + JSON), dirSize rekursif,
                 // dan sessionStats utk 1200 sesi tidak murah; boros CPU
@@ -1967,6 +2007,17 @@ public class MainActivity extends AppCompatActivity {
                 final long fSessTx = sessTx, fSessRx = sessRx;
                 final int fNSess = nSess;
                 final org.json.JSONArray fArr = arr;
+                // cy10.6: blok UI dashboard hanya di-dispatch saat resumed.
+                // Di background: SATU-satunya yang dipertahankan adalah
+                // kontinuitas data grafik (insert tanpa invalidate — data
+                // tersisip persis seperti dulu, tanpa kerja render pada
+                // view yang tidak tergambar). Label/chips/vpnStats kembali
+                // segar <= tick pertama setelah resume; state VPN/engine
+                // tetap sinkron via receiver (event-driven).
+                if (!resumed) {
+                    trafficGraph.insert(fRateRx, fRateTx);
+                    continue;
+                }
                 ui.post(() -> {
                     monGo.setText(fGo);
                     monRam.setText(fApk + " (" + fSys + ")");
@@ -2009,18 +2060,22 @@ public class MainActivity extends AppCompatActivity {
                 Long prev = prevSessAct.get(idx);
                 boolean active = prev != null && act > prev;
                 prevSessAct.put(idx, act);
-                View chip = chipViews.get(idx);
-                if (chip == null) {
-                    chip = LayoutInflater.from(this).inflate(
+                ChipVh h = chipViews.get(idx);
+                if (h == null) {
+                    View chip = LayoutInflater.from(this).inflate(
                             R.layout.row_session, monSesiDetail, false);
-                    chipViews.put(idx, chip);
+                    // cy10.6: referensi anak di-cache di holder (findViewById
+                    // SEKALI per chip, bukan 3x per chip per tick 2 dtk).
+                    h = new ChipVh(chip, chip.findViewById(R.id.chipDot),
+                            chip.findViewById(R.id.chipTitle),
+                            chip.findViewById(R.id.chipDetail));
+                    chipViews.put(idx, h);
                     monSesiDetail.addView(chip);
                     GlitchText.registerTree(chip); // Task 32: chip sesi ikut wander
                     // cy6: chip baru "muncul karena glitch" (materialize).
                     GlitchText.glitchAppear(chip);
                     final View chipV = chip; // salinan effectively-final utk lambda
-                    final TextView detailCh =
-                            chip.findViewById(R.id.chipDetail);
+                    final TextView detailCh = h.detail;
                     chip.setOnClickListener(v -> {
                         boolean show = detailCh.getVisibility()
                                 != View.VISIBLE;
@@ -2035,39 +2090,43 @@ public class MainActivity extends AppCompatActivity {
                         GlitchText.glitchJitter(chipV, GlitchText.MINOR);
                     });
                 }
-                View dot = chip.findViewById(R.id.chipDot);
-                TextView title = chip.findViewById(R.id.chipTitle);
-                TextView detail = chip.findViewById(R.id.chipDetail);
-                // Warna status via resource (cybercore) - getContext()
-                // aman utk semua bentuk scope (lambda/anonymous class).
+                // Warna status via resource (cybercore) - konteks activity
+                // (sama dgn dot.getContext() lama; rebuildSessionChips =
+                // method instance MainActivity).
                 int dotColor = hs < 0
-                        ? dot.getContext().getColor(R.color.status_red)
+                        ? getColor(R.color.status_red)
                         : (active
-                                ? dot.getContext().getColor(R.color.status_green)
-                                : dot.getContext().getColor(R.color.status_gray));
-                dot.getBackground().mutate().setTint(dotColor);
-                title.setText(String.format("#%d hs=%s tx=%s rx=%s",
+                                ? getColor(R.color.status_green)
+                                : getColor(R.color.status_gray));
+                // cy10.6: tint hanya bila warna BERUBAH (lihat catatan
+                // ChipVh — tanpa guard, invalidateSelf() per chip per
+                // tick walau warna sama).
+                if (h.lastTint != dotColor) {
+                    h.dot.getBackground().mutate().setTint(dotColor);
+                    h.lastTint = dotColor;
+                }
+                h.title.setText(String.format("#%d hs=%s tx=%s rx=%s",
                         idx, hs < 0 ? "-" : hs + "s",
                         fmtBytes(tx), fmtBytes(rx)));
-                detail.setText(String.format(
+                h.detail.setText(String.format(
                         "sesi #%d - handshake %s lalu, total %s turun "
                                 + "/ %s naik%s",
                         idx, hs < 0 ? "belum" : hs + " dtk",
                         fmtBytes(rx), fmtBytes(tx),
                         active ? " - aktif" : ""));
-                detail.setVisibility(expandedSess.contains(idx)
+                h.detail.setVisibility(expandedSess.contains(idx)
                         ? View.VISIBLE : View.GONE);
             } catch (Exception ignored) {}
         }
         // buang chip sesi yang sudah tidak ada di snapshot terbaru
-        java.util.Iterator<java.util.Map.Entry<Integer, View>> it =
+        java.util.Iterator<java.util.Map.Entry<Integer, ChipVh>> it =
                 chipViews.entrySet().iterator();
         while (it.hasNext()) {
-            java.util.Map.Entry<Integer, View> e = it.next();
+            java.util.Map.Entry<Integer, ChipVh> e = it.next();
             if (!seen.contains(e.getKey())) {
                 // cy7: chip yang hilang DISINTEGRATE sendiri (bukan
                 // container ikut flicker), lalu dilepas dari layout.
-                View goneChip = e.getValue();
+                View goneChip = e.getValue().chip;
                 GlitchText.glitchDisappear(goneChip);
                 monSesiDetail.postDelayed(() ->
                         monSesiDetail.removeView(goneChip), 110);
@@ -2957,6 +3016,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        // cy10.6: monitor thread tetap hidup (baseline rate & kontinuitas
+        // grafik terjaga) tapi berhenti men-dispatch pekerjaan UI.
+        resumed = false;
         // Fase 4 (revisi review): denyut dot tidak perlu saat activity
         // tidak terlihat - hentikan agar tidak boros CPU/baterai.
         stopDotPulse();
@@ -2972,6 +3034,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // cy10.6: izinkan kembali dispatch UI dari monitor thread (<= 2 dtk
+        // semua label dashboard segar kembali).
+        resumed = true;
         // cy9: skala animator sistem hanya berpengaruh pada mode AUTO
         // ("ikuti sistem"); mode Selalu aktif (default) tetap menjalankan
         // glitch walau skala 0 - semua penggerak waktu efek adalah

@@ -190,6 +190,13 @@ public final class GlitchText {
     }
 
     private static final ArrayList<Node> NODES = new ArrayList<>();
+    // cy10.6: scratch list TICK ambient — tick berjalan tiap 950-1500ms
+    // selamanya di foreground; alokasi 2 ArrayList per tick hanya menjadi
+    // beban GC berulang. Dipakai ulang (clear + isi; thread utama saja,
+    // tidak reentrer — burst() tidak memanggil TICK). Urutan isi dan hasil
+    // pick IDENTIK (iterasi NODES yang sama).
+    private static final ArrayList<Node> SCRATCH_ALIVE = new ArrayList<>();
+    private static final ArrayList<Node> SCRATCH_HOT = new ArrayList<>();
     /** TextView yang sedang kilat span -> teks dasar utk restore. */
     private static final IdentityHashMap<TextView, CharSequence> PENDING =
             new IdentityHashMap<>();
@@ -1112,16 +1119,18 @@ public final class GlitchText {
             // bintangnya, ambient hanya atmosfer (1 target / 950-1500ms).
             long now = SystemClock.uptimeMillis();
             if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && isGlitchEnabled()) {
-                ArrayList<Node> alive = new ArrayList<>();
-                ArrayList<Node> aliveHot = new ArrayList<>();
+                // cy10.6: scratch statis (lihat deklarasi) — tanpa alokasi
+                // per tick; isi & statistik pick identik.
+                SCRATCH_ALIVE.clear();
+                SCRATCH_HOT.clear();
                 for (Node n : NODES) {
                     TextView tv = n.ref.get();
                     if (tv == null || n.input) continue;
-                    alive.add(n);
-                    if (n.hot) aliveHot.add(n);
+                    SCRATCH_ALIVE.add(n);
+                    if (n.hot) SCRATCH_HOT.add(n);
                 }
-                if (!alive.isEmpty()) {
-                    Node n = pick(alive, aliveHot);
+                if (!SCRATCH_ALIVE.isEmpty()) {
+                    Node n = pick(SCRATCH_ALIVE, SCRATCH_HOT);
                     if (n != null) burst(n, MINOR);
                 }
             }

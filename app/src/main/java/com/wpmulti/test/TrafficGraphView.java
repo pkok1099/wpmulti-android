@@ -27,6 +27,11 @@ public class TrafficGraphView extends View {
     private final long[] rx = new long[CAP];
     private final long[] tx = new long[CAP];
     private int count = 0;
+    // cy10.6: konservatif-sticky — true bila pernah ada sampel bersebelahan
+    // yang beda nilai (bisa tetap true setelah pasangan tsb lepas oleh
+    // geser buffer; verifikasi homogenitas penuh dilakukan hanya saat
+    // kandidat skip — lihat needsRedraw).
+    private boolean mVaries = false;
 
     private final Paint rxPaint = new Paint();
     private final Paint txPaint = new Paint();
@@ -72,8 +77,34 @@ public class TrafficGraphView extends View {
         return MaterialColors.getColor(this, a);
     }
 
-    /** Tambah sampel (byte kumulatif); dihitung delta per detik oleh caller. */
+    /**
+     * Tambah sampel (byte kumulatif); dihitung delta per detik oleh caller.
+     * cy10.6: invalidate hanya bila piksel BISA berubah — buffer penuh yang
+     * seluruhnya datar (semua sampel RX homogen & semua TX homogen) dengan
+     * nilai baru sama seperti terakhir menghasilkan grafik/legend/label
+     * puncak yang identik piksel demi piksel -> redraw dilewati
+     * (rendering event-driven: tidak ada perubahan visual = tidak ada
+     * frame). Ada variasi apa pun / fase tumbuh (kurva muncul) ->
+     * invalidate persis seperti dulu.
+     */
     public synchronized void addSample(long rxBytes, long txBytes) {
+        insert(rxBytes, txBytes);
+        if (needsRedraw()) postInvalidate();
+    }
+
+    /**
+     * cy10.6: sisipkan sampel TANPA invalidate — dipakai thread monitor
+     * saat activity di-background: kontinuitas timeline grafik terjaga
+     * (data tersisip persis seperti perilaku lama), tanpa kerja render
+     * pada view yang tidak tergambar. Redraw terjadi otomatis pada sampel
+     * berikutnya lewat addSample, atau saat window digambar ulang pada
+     * resume (surface dibuat ulang -> full draw dengan data lengkap).
+     */
+    synchronized void insert(long rxBytes, long txBytes) {
+        if (count > 0
+                && (rxBytes != rx[count - 1] || txBytes != tx[count - 1])) {
+            mVaries = true;
+        }
         if (count < CAP) {
             rx[count] = rxBytes;
             tx[count] = txBytes;
@@ -84,11 +115,31 @@ public class TrafficGraphView extends View {
             rx[CAP - 1] = rxBytes;
             tx[CAP - 1] = txBytes;
         }
-        postInvalidate();
+    }
+
+    /**
+     * Apakah hasil gambar berpotensi berubah? Fase tumbuh (count < CAP)
+     * selalu ya. Buffer penuh + flag mVaries = ya. Buffer penuh + flag
+     * false = verifikasi homogenitas penuh O(CAP) (<=120 perbandingan
+     * long, jauh lebih murah dari satu pass render) sebelum memutuskan
+     * tidak redraw — flag konservatif tidak pernah menyebabkan skip
+     * yang salah, hanya invalidasi berlebih yang kemudian lurus sendiri.
+     */
+    private synchronized boolean needsRedraw() {
+        if (count < CAP) return true;
+        if (mVaries) return true;
+        for (int i = 1; i < count; i++) {
+            if (rx[i] != rx[0] || tx[i] != tx[0]) {
+                mVaries = true;
+                return true;
+            }
+        }
+        return false;
     }
 
     public synchronized void clear() {
         count = 0;
+        mVaries = false;
         postInvalidate();
     }
 

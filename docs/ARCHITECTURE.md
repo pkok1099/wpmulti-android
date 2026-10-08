@@ -216,3 +216,58 @@ Muncul karena glitch: window-anim `GlitchWindowAnim`/`...Off` (guard
   baris aktif berlatar wash token chip), 1 tap = pilih; bahasa visual
   sama dgn GlitchDropdown; auto-dismiss saat anchor (chip) lepas dari
   window — termasuk saat dialog host ditutup.
+
+## 8. Model rendering & CPU idle (audit cy10.6)
+
+Prinsip: **rendering event-driven** — tidak ada frame tanpa perubahan
+visual yang mungkin. Audit menyeluruh (onDraw/Canvas/Paint/Bitmap/Shader/
+Path/invalidate/requestLayout/Choreographer/animasi/overlay/alokasi)
+menghasilkan peta konsumen berikut dan jaminan berikut.
+
+### Konsumen waktu yang MELENGKAPI desain (tidak diubah)
+| Konsumen | Kadensi | Mengapa tetap |
+|---|---|---|
+| TICK ambient GlitchText | 950–1500ms | Identitas glitch (random + event-driven by design); scratch list statis sejak cy10.6 (tanpa alokasi per tick) |
+| Monitor thread | 2 dtk | Tampilan data hidup (CPU/RAM/rate/sesi) — nilainya memang berubah (usia handshake, rate) |
+| Denyut dot status (`SelfAnim.pulse`) | per-frame Choreographer | Hanya saat engine RUNNING; `VectorDrawable.setAlpha` no-op bila nilai sama (AOSP) → redraw hanya saat alpha kuantisasi benar-benar berubah; bangunan vsync-nya adalah harga desain denyut |
+| `SelfAnim.ofDuration/spring` | 260ms/≤3 dtk | Berbatas pasti (morph tombol, bounce) |
+
+### Jaminan no-work saat tidak ada perubahan (cy10.6)
+1. **Background = nol kerja UI**. `resumed=false` (onPause) → monitor
+   thread TIDAK men-dispatch `updateHeader`/blok dashboard; satu-satunya
+   yang berjalan adalah `TrafficGraphView.insert()` (data tanpa
+   invalidate) demi kontinuitas timeline grafik. onPause juga
+   menghentikan TICK/denyut dot/pulse dropdown (sudah ada sebelumnya).
+2. **Grafik datar tidak digambar ulang**. `TrafficGraphView.addSample`
+   melewatkan `postInvalidate` bila buffer penuh + seluruh sampel
+   homogen + nilai baru = nilai terakhir (grafik/legend/puncak identik
+   piksel demi piksel). Fase tumbuh atau ada variasi → invalidate
+   seperti biasa.
+3. **Tint chip sesi hanya saat berubah**. `VectorDrawable.setTintList`
+   membandingkan IDENTITAS objek dan `Drawable.setTint(int)` selalu
+   alokasi `ColorStateList` baru (AOSP 14: VectorDrawable:484,
+   GradientDrawable:1229) → dulu `invalidateSelf()` per chip per tick
+   walau warna sama; kini di-guard int di `ChipVh.lastTint`.
+4. **findViewById chip sekali seumur chip** (holder `ChipVh`), bukan
+   3× per chip per tick 2 dtk.
+5. **Tanpa** `setLayerType`, hardware layer permanen, bitmap snapshot
+   navbar, animated drawable, atau Choreographer tanpa batas selain
+   denyut dot (lihat tabel). `TextView.setTextColor` dan `View.setAlpha`
+   sudah no-op bila nilai sama (diverifikasi AOSP) — tidak perlu guard.
+
+### Alokasi saat render (keadaan setelah cy10.2 + cy10.6)
+- Scanline bitmap: dibuat SEKALI (`init`, cy10.2).
+- Scratch list TICK: statis (cy10.6).
+- `SpannableString` + span per burst: disengaja (K4 — pooling berisiko
+  interaksi watcher/restore; volume kecil, event-driven).
+- `ShapeAppearanceModel` per frame morph: batasan API lib (K5).
+
+### Cara ukur CPU (protokol device)
+```
+# idle foreground (engine mati / jalan), 60 dtk:
+adb shell top -p $(adb shell pidof com.wpmulti.test) -d 60
+# frame yang benar-benar dirender (harus ~0 saat idle tanpa engine):
+adb shell dumpsys gfxinfo com.wpmulti.test | grep -E "Total frames|Janky"
+```
+Angka "CPU app" di dashboard = alat ukur bawaan (baca saat idle di
+Beranda, sebelum vs sesudah cy10.6).
