@@ -139,6 +139,15 @@
         <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
     </style>
 
+    <!-- cy10.3: label item nav COMPACT - 11sp satu ukuran utk aktif &
+         non-aktif (aktif dibedakan indikator pill + warna ikon/teks
+         selector default lib, bukan ukuran teks) -> tinggi item stabil
+         saat pindah tab, tidak ada "lompatan" label. -->
+    <style name="TextAppearance.Wpmulti.NavLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.04</item>
+    </style>
+
     <!-- Glitch window/popup animation (cy7): dialog & dropdown MUNCUL dan
          HILANG karena glitch - flicker alpha multi-langkah + micro scale
          (bukan fade/slide platform). Dipasang via
@@ -285,12 +294,14 @@
     <!-- Chip mode IP per aplikasi (tombol GLOBAL/IPv4/IPv6): label
          neon flat TANPA shadow framework (stateListAnimator null,
          elevation 0). Warna per mode dipasang kode (applyModeChipStyle):
-         bg + textColor dari token yang sama. -->
+         bg + textColor dari token yang sama.
+         cy10.3: minHeight 30 -> 48dp (area sentuh minimal 48dp -
+         permintaan eksplisit; minWidth 68dp sudah >= 48dp). -->
     <style name="Widget.Wpmulti.ModeChip" parent="android:Widget.Material.Button">
         <item name="android:background">@drawable/bg_chip_mode_global</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="android:elevation">0dp</item>
-        <item name="android:minHeight">30dp</item>
+        <item name="android:minHeight">48dp</item>
         <item name="android:minWidth">68dp</item>
         <item name="android:paddingLeft">14dp</item>
         <item name="android:paddingRight">14dp</item>

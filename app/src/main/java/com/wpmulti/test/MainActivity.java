@@ -877,11 +877,24 @@ public class MainActivity extends AppCompatActivity {
                         .SOFT_INPUT_ADJUST_RESIZE);
     }
 
-    private android.widget.EditText addSearchHeader(
+    // cy10.3: STICKY SEARCH BAR. Search field & legenda kini DI LUAR area
+    // scroll: container vertikal { search, legenda opsional, ListView } -
+    // saat list di-scroll (atau keyboard muncul + ADJUST_RESIZE), search
+    // tetap terlihat tepat di bawah judul dialog (judul AlertDialog memang
+    // selalu di atas custom view). Sebelumnya search dipasang sebagai
+    // HEADER ListView -> ikut terbawa scroll. Filter tetap label ATAU
+    // package name; watcher dipasang pada EditText yang sama (satu jalur
+    // kode untuk kedua dialog).
+    //
+    // ListView dipasang match_parent di dalam container; container diukur
+    // dialog dengan AT_MOST (sama seperti ListView langsung sebelumnya)
+    // -> tinggi list = konten ter-cap ruang dialog, perilaku lama.
+    private android.widget.LinearLayout buildSearchList(
             android.widget.ListView lv,
             java.util.List<String[]> apps,
             java.util.List<String[]> shown,
-            android.widget.BaseAdapter ad) {
+            android.widget.BaseAdapter ad,
+            android.view.View belowSearch) {
         android.widget.EditText search =
                 new android.widget.EditText(dialogCtx());
         search.setHint("Cari aplikasi...");
@@ -905,7 +918,6 @@ public class MainActivity extends AppCompatActivity {
         float d = getResources().getDisplayMetrics().density;
         int pad = (int) (16 * d);
         search.setPadding(pad, pad / 2, pad, pad / 2);
-        lv.addHeaderView(search);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(
                     CharSequence cs, int a, int b, int c) {}
@@ -924,7 +936,65 @@ public class MainActivity extends AppCompatActivity {
                 ad.notifyDataSetChanged();
             }
         });
-        return search;
+        android.widget.LinearLayout box =
+                new android.widget.LinearLayout(dialogCtx());
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.addView(search, new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (belowSearch != null) {
+            box.addView(belowSearch,
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        lv.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        box.addView(lv);
+        return box;
+    }
+
+    // cy10.3: LEGENDA mode IP - blok kecil di bawah search bar yang
+    // menjelaskan arti tiap mode/warna chip (permintaan eksplisit).
+    // Satu TextView multi-baris dengan span warna per mode (dot warna =
+    // token palet yang sama dengan chip: GLOBAL slate, IPv4 cyan,
+    // IPv6 magenta). Tidak interaktif, ikut tema dialog (monospace).
+    private android.view.View buildIpModeLegend() {
+        android.widget.TextView legend =
+                new android.widget.TextView(dialogCtx());
+        legend.setTextSize(11);
+        legend.setTypeface(android.graphics.Typeface.MONOSPACE);
+        legend.setIncludeFontPadding(false);
+        float d = getResources().getDisplayMetrics().density;
+        legend.setPadding((int) (16 * d), (int) (6 * d),
+                (int) (16 * d), (int) (8 * d));
+        legend.setTextColor(getColor(R.color.m3_on_surface_variant));
+        android.text.SpannableStringBuilder sb =
+                new android.text.SpannableStringBuilder();
+        String[][] rows = {
+                {"\u25A0", "GLOBAL", " \u2014 ikut mode IP pengaturan utama"},
+                {"\u25A0", "IPv4", " \u2014 paksa koneksi IPv4 utk app ini"},
+                {"\u25A0", "IPv6", " \u2014 paksa koneksi IPv6 utk app ini"},
+        };
+        int[] cols = {
+                getColor(R.color.m3_on_surface_variant),
+                getColor(R.color.m3_primary),
+                getColor(R.color.m3_tertiary),
+        };
+        for (int i = 0; i < rows.length; i++) {
+            if (i > 0) sb.append("\n");
+            int dotStart = sb.length();
+            sb.append(rows[i][0]);
+            sb.setSpan(new android.text.style.ForegroundColorSpan(
+                            cols[i]), dotStart, sb.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.append(" ");
+            sb.append(rows[i][1]);
+            sb.append(rows[i][2]);
+        }
+        legend.setText(sb);
+        return legend;
     }
 
     private void showAppIpModePicker() {
@@ -957,10 +1027,14 @@ public class MainActivity extends AppCompatActivity {
                     // cy10: context bertema dialog: Button otomatis chip
                     // neon flat (Widget.Wpmulti.ModeChip); padding dp (bukan
                     // px); label monospace satu baris ellipsize.
+                    // cy10.3: chip kini minHeight 48dp (area sentuh) ->
+                    // padding vertikal row 10dp -> 4dp agar tinggi baris
+                    // tetap ringkas (48 + 8 = 56dp).
                     row = new android.widget.LinearLayout(dialogCtx());
                     row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-                    row.setPadding((int) (16 * d), (int) (10 * d),
-                            (int) (16 * d), (int) (10 * d));
+                    row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    row.setPadding((int) (16 * d), (int) (4 * d),
+                            (int) (16 * d), (int) (4 * d));
                     tv = new android.widget.TextView(dialogCtx());
                     tv.setLayoutParams(
                             new android.widget.LinearLayout.LayoutParams(0,
@@ -983,30 +1057,34 @@ public class MainActivity extends AppCompatActivity {
                     btn = (android.widget.Button) t[1];
                 }
                 tv.setText(label);
-                String key = "vpn_app_ip_" + pkg;
+                final String key = "vpn_app_ip_" + pkg;
                 String mode = vp.getString(key, "");
                 btn.setText(appIpModeLabel(mode));
                 applyModeChipStyle(btn, mode);
                 // cy6: baris dialog ikut sistem glitch (dedup di dalam).
                 GlitchText.registerTree(row);
                 GlitchText.installTouch(row);
-                btn.setOnClickListener(v -> {
-                    String cur = vp.getString(key, "");
-                    String next = cur.isEmpty() ? "v4"
-                            : cur.equals("v4") ? "v6" : "";
-                    if (next.isEmpty()) vp.edit().remove(key).apply();
-                    else vp.edit().putString(key, next).apply();
-                    btn.setText(appIpModeLabel(next));
-                    applyModeChipStyle(btn, next);
-                    // cy7: mode per app berubah = HANYA tombol mode itu
-                    // (label row tidak berubah -> tidak ikut glitch).
-                    GlitchText.glitchNow(btn, GlitchText.MEDIUM);
-                    updateVpnIpModeCount();
-                });
+                // cy10.3: PILIH MODE = 1 TAP via popup anchored (bukan
+                // siklus Global->v4->v6). Alasan pendekatan ini vs
+                // memperbaiki siklus: semua mode terlihat sekaligus,
+                // berlabel + tertanda aktif -> tidak ada lagi tebak-tebakan
+                // "berapa kali harus menekan"; 1 tap = mode terpasang;
+                // pola popup bertema + window-anim glitch sudah ada di
+                // arsitektur (GlitchDropdown) -> konsisten. Tekan diproses
+                // SEKETIKA (click listener; glitch hanya lapisan visual,
+                // tidak pernah memblokir input). Akar bug "label tidak
+                // pernah berubah" (PENDING base basi yang menimpa label
+                // baru) sudah diperbaiki di GlitchText.burst.
+                final android.widget.Button fbtn = btn;
+                btn.setOnClickListener(v ->
+                        showIpModeMenu(fbtn, key, vp));
                 return row;
             }
         };
-        addSearchHeader(lv, apps, shown, ad);
+        // cy10.3: search + LEGENDA mode sticky di luar area scroll.
+        android.view.View legend = buildIpModeLegend();
+        android.widget.LinearLayout content =
+                buildSearchList(lv, apps, shown, ad, legend);
         lv.setAdapter(ad);
         // cy8: dialog "Mode IP per aplikasi" muncul KARENA GLITCH:
         // window flicker + scanline menyapu panel + baris list menyala
@@ -1014,7 +1092,7 @@ public class MainActivity extends AppCompatActivity {
         // (semua efek level window/panel).
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Mode IP per aplikasi")
-                .setView(lv)
+                .setView(content)
                 .setPositiveButton("Tutup", null)
                 .show();
         View dec = dlg.getWindow() != null
@@ -1045,8 +1123,213 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // cy10.3: popup pemilih mode IP per aplikasi - PENGGANTI siklus tap.
+    // Tap chip -> menu kecil anchored berisi SEMUA mode (GLOBAL/IPv4/IPv6)
+    // -> 1 tap memilih. Bahasa visual = GlitchDropdown (panel bg_dropdown
+    // + window-anim materialize/disintegrate + scanline + materialize
+    // staggered saat buka, vanish staggered saat pilih). Baris 48dp
+    // (area sentuh); mode AKTIF diberi latar wash token chip-nya + label
+    // warna mode, sisanya putih dgn ripple tema dialog. State tetap milik
+    // SharedPreferences (vpn_app_ip_<pkg>) - popup hanya presentasi.
+    // Tekan chip lagi saat terbuka = toggle tutup (pola GlitchDropdown).
+    private android.widget.PopupWindow ipMenu;
 
-    // Dialog pilih aplikasi untuk per-app VPN.
+    private void showIpModeMenu(final android.widget.Button anchor,
+            final String key, final android.content.SharedPreferences vp) {
+        // Toggle: sudah terbuka -> tutup (jangan tumpuk popup).
+        if (ipMenu != null) {
+            ipMenu.dismiss();
+            return;
+        }
+        final float d = getResources().getDisplayMetrics().density;
+        final boolean fx = GlitchText.isGlitchEnabled();
+        // Value tersimpan: "" = global, "v4", "v6".
+        final String cur = vp.getString(key, "");
+        final String[] modes = {"", "v4", "v6"};
+        final int[] labels = {R.string.ip_mode_global,
+                R.string.ip_mode_v4, R.string.ip_mode_v6};
+        final int[] descs = {R.string.ip_mode_global_desc,
+                R.string.ip_mode_v4_desc, R.string.ip_mode_v6_desc};
+        final int[] washes = {R.color.chip_global_bg,
+                R.color.chip_v4_bg, R.color.chip_v6_bg};
+        final int[] dots = {R.color.m3_on_surface_variant,
+                R.color.m3_primary, R.color.m3_tertiary};
+
+        // Ripple tema dialog utk baris NON-aktif (cyan 15% via
+        // colorControlHighlight tema) - feedback fungsional, tetap jalan
+        // walau efek glitch mati (konsisten dgn GlitchDropdown).
+        android.util.TypedValue tv2 = new android.util.TypedValue();
+        dialogCtx().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackground, tv2, true);
+
+        android.widget.LinearLayout box =
+                new android.widget.LinearLayout(dialogCtx());
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setBackgroundResource(R.drawable.bg_dropdown);
+        int padV = (int) (4 * d);
+        box.setPadding(padV, padV, padV, padV);
+
+        for (int i = 0; i < modes.length; i++) {
+            final int idx = i;
+            final boolean active = modes[i].equals(cur);
+            android.widget.LinearLayout row =
+                    new android.widget.LinearLayout(dialogCtx());
+            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight((int) (48 * d));
+            row.setPadding((int) (16 * d), 0, (int) (12 * d), 0);
+            if (active) {
+                // Baris aktif: latar wash token chip mode itu + label
+                // warna mode (tanda "nilai sekarang" tanpa elemen baru).
+                row.setBackgroundColor(getColor(washes[i]));
+            } else if (tv2.resourceId != 0) {
+                row.setBackgroundResource(tv2.resourceId);
+            }
+            android.widget.TextView dot =
+                    new android.widget.TextView(dialogCtx());
+            dot.setText("\u25A0");
+            dot.setTextSize(11);
+            dot.setTypeface(android.graphics.Typeface.MONOSPACE);
+            dot.setTextColor(getColor(dots[i]));
+            dot.setPadding(0, 0, (int) (8 * d), 0);
+            android.widget.TextView label =
+                    new android.widget.TextView(dialogCtx());
+            label.setText(getString(labels[i]));
+            label.setTextSize(13);
+            label.setTypeface(android.graphics.Typeface.MONOSPACE);
+            label.setTypeface(label.getTypeface(), android.graphics.Typeface.BOLD);
+            label.setTextColor(active ? getColor(dots[i])
+                    : getColor(R.color.glitch_white));
+            android.widget.TextView desc =
+                    new android.widget.TextView(dialogCtx());
+            desc.setText(getString(descs[i]));
+            desc.setTextSize(11);
+            desc.setTypeface(android.graphics.Typeface.MONOSPACE);
+            desc.setSingleLine(true);
+            desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            desc.setTextColor(getColor(R.color.m3_on_surface_variant));
+            desc.setPadding((int) (10 * d), 0, 0, 0);
+            desc.setLayoutParams(
+                    new android.widget.LinearLayout.LayoutParams(0,
+                            android.view.ViewGroup.LayoutParams
+                                    .WRAP_CONTENT, 1f));
+            row.addView(dot);
+            row.addView(label);
+            row.addView(desc);
+            row.setOnClickListener(v -> {
+                // State dipasang SEKETIKA (sebelum fx apa pun) - glitch
+                // hanya lapisan visual, tidak pernah menunda input.
+                String pick = modes[idx];
+                if (pick.isEmpty()) vp.edit().remove(key).apply();
+                else vp.edit().putString(key, pick).apply();
+                anchor.setText(appIpModeLabel(pick));
+                applyModeChipStyle(anchor, pick);
+                // cy7: mode per app berubah = HANYA tombol mode itu
+                // (label row tidak berubah -> tidak ikut glitch).
+                GlitchText.glitchNow(anchor, GlitchText.MEDIUM);
+                updateVpnIpModeCount();
+                closeIpModeMenu(true);
+            });
+            box.addView(row, new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        final android.widget.PopupWindow pw =
+                new android.widget.PopupWindow(dialogCtx());
+        pw.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                android.graphics.Color.TRANSPARENT));
+        pw.setOutsideTouchable(true);
+        pw.setFocusable(true);
+        pw.setClippingEnabled(true);
+        // fx HIDUP -> materialize/disintegrate; MATI -> 0-duration
+        // (pola GlitchDropdown - tidak pernah fade platform default).
+        pw.setAnimationStyle(fx ? R.style.GlitchPopupWindow
+                : R.style.GlitchPopupWindowOff);
+        pw.setContentView(box);
+        int w = Math.max(anchor.getWidth(), (int) (250 * d));
+        pw.setWidth(w);
+        pw.setHeight(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+
+        // Dialog host ditutup -> anchor lepas -> popup ikut ditutup
+        // (PopupWindow tidak memantau detach anchor sendiri).
+        anchor.addOnAttachStateChangeListener(
+                new android.view.View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(android.view.View v) {}
+            @Override public void onViewDetachedFromWindow(android.view.View v) {
+                if (ipMenu == pw) pw.dismiss();
+            }
+        });
+        pw.setOnDismissListener(() -> {
+            // hygiene: overlay & langkah tertunda pada baris popup dilepas
+            // bersih (pola GlitchDropdown.onDismiss).
+            GlitchText.clearScanline(box);
+            GlitchText.cancelFor(box);
+            for (int i = 0; i < box.getChildCount(); i++) {
+                GlitchText.cancelFor(box.getChildAt(i));
+            }
+            if (ipMenu == pw) ipMenu = null;
+        });
+
+        // Posisi: di bawah chip; tidak muat -> di atas chip.
+        int[] loc = new int[2];
+        anchor.getLocationOnScreen(loc);
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int spaceBelow = screenH - (loc[1] + anchor.getHeight());
+        box.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(w,
+                        android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(
+                        (int) (200 * d),
+                        android.view.View.MeasureSpec.AT_MOST));
+        int ph = box.getMeasuredHeight();
+        if (spaceBelow >= ph + (int) (8 * d)) {
+            pw.showAsDropDown(anchor, 0, (int) (2 * d));
+        } else {
+            pw.showAtLocation(anchor.getRootView(),
+                    android.view.Gravity.NO_GRAVITY, loc[0],
+                    Math.max(0, loc[1] - ph - (int) (6 * d)));
+        }
+        ipMenu = pw;
+
+        if (fx) {
+            // Materialize setelah popup benar-benar layout (pola
+            // GlitchDropdown): scanline menyapu + burst teks MEDIUM +
+            // fragmen baris menyala staggered. Teks didaftarkan agar
+            // burst benar-benar menyala pada baris popup ini.
+            box.post(() -> {
+                if (ipMenu != pw) return; // sudah ditutup lagi
+                GlitchText.registerTree(box);
+                GlitchText.scanline(box, 320);
+                GlitchText.glitchTree(box, GlitchText.MEDIUM);
+                GlitchText.materializeStaggered(box);
+            });
+        }
+    }
+
+    /**
+     * Tutup popup mode IP. selectMode=true -> kilat scanline + korupsi
+     * singkat (vanish staggered) sebelum dismiss (pola
+     * GlitchDropdown.close); false (tap luar/back) -> langsung dismiss,
+     * exit animation style yang menangani disintegrate.
+     */
+    private void closeIpModeMenu(boolean selectMode) {
+        android.widget.PopupWindow pw = ipMenu;
+        if (pw == null) return;
+        android.widget.LinearLayout box =
+                pw.getContentView() instanceof android.widget.LinearLayout
+                        ? (android.widget.LinearLayout) pw.getContentView()
+                        : null;
+        if (selectMode && GlitchText.isGlitchEnabled() && box != null) {
+            GlitchText.scanline(box, 140);
+            GlitchText.glitchTree(box, GlitchText.MINOR);
+            GlitchText.vanishStaggered(box);
+            ui.postDelayed(pw::dismiss, 150);
+        } else {
+            pw.dismiss();
+        }
+    }
+
     private void showAppPicker() {
         ensureAppCache(this::showAppPickerNow);
     }
@@ -1114,7 +1397,10 @@ public class MainActivity extends AppCompatActivity {
                 return cb;
             }
         };
-        addSearchHeader(lv, apps, shown, ad);
+        // cy10.3: search sticky di luar area scroll (tanpa legenda utk
+        // dialog ini - tidak ada mode warna yang perlu dijelaskan).
+        android.widget.LinearLayout content =
+                buildSearchList(lv, apps, shown, ad, null);
         lv.setAdapter(ad);
         // cy8: dialog "Pilih aplikasi" (Split Tunnel) muncul KARENA GLITCH:
         // window flicker + scanline menyapu panel + item list materialize
@@ -1122,7 +1408,7 @@ public class MainActivity extends AppCompatActivity {
         // event-driven (watcher region + listener per-checkbox).
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Pilih aplikasi")
-                .setView(lv)
+                .setView(content)
                 .setPositiveButton("OK", (d2, w) -> {
                     getSharedPreferences("vpn", MODE_PRIVATE).edit()
                             .putStringSet("vpn_apps", checked).apply();
@@ -2357,12 +2643,15 @@ public class MainActivity extends AppCompatActivity {
 
         // bottom navigation (4 tab) — pengganti navigasi drawer lama
         BottomNavigationView bnv = findViewById(R.id.bottomNav);
-        // cy8 FIX ARTIFACT KOTAK: pill nav ber-elevation 6dp TIDAK BOLEH
-        // di-alpha-flicker (glitchView) - alpha < 1 memaksa offscreen layer
-        // yang ter-clip bounds persegi sehingga shadow elevation rusak
-        // berbentuk KOTAK di sekitar pill (persis artifact di screenshot).
-        // Press feedback pada area nav = displacement murni (glitchJitter)
-        // + glitch per-item lewat glitchNavItems di bawah.
+        // cy8 FIX ARTIFACT KOTAK: pill nav TIDAK BOLEH di-alpha-flicker
+        // (glitchView) - alpha < 1 memaksa offscreen layer yang ter-clip
+        // bounds persegi sehingga shadow terpotong berbentuk KOTAK di
+        // sekitar pill. cy10.3: pill kini TANPA elevation & TANPA lib
+        // MaterialShapeDrawable (FrameLayout + capsule XML + elevation 0
+        // - lihat activity_main.xml) sehingga mesin yang dulu menghasilkan
+        // kotak sudah tidak ada; aturan ini tetap dijaga sebagai kontrak:
+        // efek pada area nav = displacement murni (glitchJitter) + glitch
+        // per-item lewat glitchNavItems di bawah, TIDAK PERNAH alpha.
         bnv.setOnTouchListener((v, ev) -> {
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 View pillGlitch = findViewById(R.id.navPill);

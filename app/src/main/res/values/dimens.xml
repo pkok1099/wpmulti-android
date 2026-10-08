@@ -9,10 +9,11 @@
     <dimen name="corner_large">8dp</dimen>
 
     <!-- Fix pill melayang: clearance BAWAH base container scroll (tinggi
-         pill 64dp + margin + ruang napas). Inset navigation bar DITAMBAH
+         pill + margin + ruang napas). Inset navigation bar DITAMBAH
          dinamis oleh listener rootMain (base + bars.bottom) sehingga item
          terakhir tetap bisa digeser ke atas pill di perangkat gesture nav
          maupun 3-button. Dengan clipToPadding=false di scroll container,
-         konten tetap lewat di belakang pill - bukan dipotong. -->
-    <dimen name="nav_pill_clearance">104dp</dimen>
+         konten tetap lewat di belakang pill - bukan dipotong.
+         cy10.3: pill compact 64dp (dari 80dp) -> clearance 88dp. -->
+    <dimen name="nav_pill_clearance">88dp</dimen>
 </resources>

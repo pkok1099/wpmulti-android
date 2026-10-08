@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- cy10.3: label & deskripsi mode IP per aplikasi - dipakai chip
+     (appIpModeLabel di Java utk chip = resource di sini) + popup
+     pemilih mode + legenda. SATU sumber agar chip/popup/legenda tidak
+     pernah saling bertentangan. -->
+<resources>
+    <string name="ip_mode_global">GLOBAL</string>
+    <string name="ip_mode_v4">IPv4</string>
+    <string name="ip_mode_v6">IPv6</string>
+    <string name="ip_mode_global_desc">\u2014 ikut pengaturan utama</string>
+    <string name="ip_mode_v4_desc">\u2014 paksa IPv4 utk app ini</string>
+    <string name="ip_mode_v6_desc">\u2014 paksa IPv6 utk app ini</string>
+</resources>

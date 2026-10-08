@@ -909,20 +909,28 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
-    <!-- Navbar pill melayang (M3 Expressive): FloatingToolbarLayout dari
-         material 1.14.0 - container pill full-round (ShapeAppearance.M3.
-         Comp.Toolbar.Floating.Container.Shape = Corner.Full 50%, referensi
-         style tetap lib, TIDAK terpengaruh remap shapeCornerSize* tema).
-         Fix: TIDAK ada strip/latar di belakang pill - hanya pill itu
-         sendiri yang berwarna, sedikit translucent (nav_pill_container)
-         + elevation lib 6dp sebagai shadow lembut; konten halaman lewat
-         di belakangnya sampai tepi bawah layar. Margin bawah base 12dp
-         ditimpa listener rootMain = inset nav + 4dp (aman gesture nav).
-         CATATAN inset: listener rootMain mengembalikan CONSUMED sehingga
-         attr *SystemWindowInsets milik lib no-op; inset sepenuhnya di
-         listener rootMain (bukan lib). -->
-    <com.google.android.material.floatingtoolbar.FloatingToolbarLayout
-        style="@style/Widget.Material3.FloatingToolbar"
+    <!-- Navbar pill melayang - cy10.3 COMPACT + TANPA ARTIFACT KOTAK:
+         pengganti FloatingToolbarLayout (lib). PILL = FrameLayout polos
+         + bg_nav_pill.xml (GradientDrawable capsule XML, radius 32dp =
+         setengah tinggi 64dp) + ELEVASI 0: tidak ada lagi
+         MaterialShapeDrawable lib / shadow elevation 6dp pada view
+         translucent / mesin inset lib - tiga lapisan yang dicurigai
+         (dan sudah dua kali bermasalah: cy3 "box abu-abu", cy8
+         "artifact kotak alpha+elevation") kini TIDAK ADA sama sekali,
+         bukan ditutup warna. Konten halaman tetap lewat di belakang
+         pill (translucent 90%) sampai tepi bawah layar.
+         COMPACT: BNV 56dp (dari 64dp) + icon 20dp + label 11sp +
+         itemPadding ramping + padding pill 4/6dp -> tinggi total 64dp
+         (dari 80dp). LEBAR: BNV layout_width 300dp BUKAN wrap_content -
+         BottomNavigationMenuView memberi item lebar minimum
+         0,175 x ruang-ukur (AT_MOST penuh dari layar) sehingga
+         wrap_content membuat pill melebar mengikuti LAYAR, bukan isi
+         (akar "terlalu lebar", makin lebar device makin lebar pill).
+         Dengan spec EXACTLY(300dp): tiap item = max(isi, ~52dp) ->
+         area sentuh >= 48dp, total isi ~210dp, BNV melapor 210dp, pill
+         wrap_content membungkusnya (~222dp) - konstan di semua ukuran
+         layar, terpusat (layout_gravity center_horizontal). -->
+    <FrameLayout
         android:id="@+id/navPill"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -930,17 +938,27 @@
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="12dp"
-        app:backgroundTint="@color/nav_pill_container">
+        android:background="@drawable/bg_nav_pill"
+        android:elevation="0dp"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
 
         <com.google.android.material.bottomnavigation.BottomNavigationView
             style="@style/Widget.Wpmulti.Nav"
             android:id="@+id/bottomNav"
-            android:layout_width="wrap_content"
-            android:layout_height="64dp"
-            android:backgroundTint="@android:color/transparent"
+            android:layout_width="300dp"
+            android:layout_height="56dp"
+            android:background="@null"
             android:elevation="0dp"
+            app:itemIconSize="20dp"
+            app:itemPaddingBottom="4dp"
+            app:itemPaddingTop="2dp"
+            app:itemTextAppearanceActive="@style/TextAppearance.Wpmulti.NavLabel"
+            app:itemTextAppearanceInactive="@style/TextAppearance.Wpmulti.NavLabel"
             app:menu="@menu/bottom_nav"
             app:labelVisibilityMode="labeled" />
-    </com.google.android.material.floatingtoolbar.FloatingToolbarLayout>
+    </FrameLayout>
 
 </FrameLayout>

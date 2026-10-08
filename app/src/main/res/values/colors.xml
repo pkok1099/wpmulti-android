@@ -21,11 +21,12 @@
     <color name="m3_tertiary">#F0ABFC</color>
 
     <!-- Pill nav melayang: container glassy dark 90% alpha (#131D2B)
-         supaya konten yang lewat di belakang pill samar terlihat;
-         elevation lib 6dp tetap memberi shadow agar pill terbaca.
-         Stroke neon TIDAK dipakai: Widget.Material3.FloatingToolbar
-         tidak mengekspos attr stroke (terverifikasi AAR 1.14.0),
-         custom background menggantikan perilaku lib - risiko > manfaat. -->
+         supaya konten yang lewat di belakang pill samar terlihat.
+         cy10.3: TANPA elevation/shadow lagi - pill = FrameLayout +
+         GradientDrawable capsule XML (bg_nav_pill.xml) + elevation 0.
+         Shadow framework pada view translucent adalah salah satu sumber
+         artifact kotak di tepi pill (lihat docs/KNOWN_ISSUES.md);
+         kesan melayang cukup dari translucency + margin. -->
     <color name="nav_pill_container">#E6131D2B</color>
 
     <!-- Warna status semantik - dipakai Java via getColor(); sebelumnya

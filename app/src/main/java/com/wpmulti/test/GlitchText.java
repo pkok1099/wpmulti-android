@@ -1187,8 +1187,31 @@ public final class GlitchText {
         if (node.spannable) {
             // Base = teks dasar (bukan kilatan sebelumnya) agar span
             // berulang tidak menumpuk di atas span lama.
-            CharSequence base = PENDING.containsKey(tv)
-                    ? PENDING.get(tv) : cur;
+            // cy10.3 FIX "tombol mode IP: label tidak pernah berubah,
+            // hanya warna" (gejala: harus menekan berkali-kali): PENDING
+            // hanya valid selama KARAKTER teks TIDAK berubah sejak kilatan
+            // dipasang. Siklus bug lama: ACTION_DOWN (press feedback)
+            // menangkap base lama -> onClick MEN-SET LABEL BARU ->
+            // glitchNow level efek membaca PENDING basi dan men-setText
+            // TEKS LAMA kembali (menginjak perubahan aplikasi). Kini:
+            // karakter sama = pakai base tersimpan (strip span lama,
+            // perilaku lama persis); karakter beda = PENDING basi,
+            // DIBUANG - teks sekarang (hasil setText aplikasi) menjadi
+            // base baru. Visual kilatan (span/shadow/durasi) tidak
+            // berubah; yang berubah hanya teks yang dikorupsi/dipulihkan
+            // kini adalah teks yang BENAR.
+            CharSequence base;
+            if (PENDING.containsKey(tv)) {
+                CharSequence p = PENDING.get(tv);
+                if (TextUtils.equals(p, cur)) {
+                    base = p;
+                } else {
+                    PENDING.remove(tv);
+                    base = cur;
+                }
+            } else {
+                base = cur;
+            }
             int len = base.length();
             if (len > 0) {
                 SpannableString sp = new SpannableString(base);
