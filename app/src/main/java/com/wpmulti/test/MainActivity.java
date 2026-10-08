@@ -143,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
     private android.widget.CheckBox vpnAutoReconnect;
     private BroadcastReceiver vpnDropReceiver;
     private android.widget.Spinner vpnAppMode;
+    private android.widget.Button vpnPickAppsBtn; // cy10.8: enable/disable per mode split tunnel
     private android.widget.Spinner vpnIpMode;
     private android.widget.TextView vpnAppCount;
     private android.widget.TextView vpnIpModeAppCount;
@@ -751,12 +752,43 @@ public class MainActivity extends AppCompatActivity {
     private void updateVpnAppCount() {
         android.content.SharedPreferences vp =
                 getSharedPreferences("vpn", MODE_PRIVATE);
-        int n = vp.getStringSet("vpn_apps",
-                new java.util.HashSet<>()).size();
-        final int count = n;
-        ui.post(() -> vpnAppCount.setText(
-                count == 0 ? "Belum ada aplikasi dipilih"
-                        : count + " aplikasi dipilih"));
+        // cy10.8 (req 4): teks counter sadar-mode. "Semua aplikasi" ->
+        // pilihan TIDAK dipakai -> jangan tampilkan angka yang memberi
+        // kesan user harus memilih app; tampilkan fakta mode saja.
+        // DIPILIH/DIKECUALIKAN -> teks lama (jumlah app terpilih).
+        final String text;
+        if (vp.getString("vpn_app_mode", "all").equals("all")) {
+            text = "Semua aplikasi lewat VPN";
+        } else {
+            int n = vp.getStringSet("vpn_apps",
+                    new java.util.HashSet<>()).size();
+            text = n == 0 ? "Belum ada aplikasi dipilih"
+                    : n + " aplikasi dipilih";
+        }
+        ui.post(() -> vpnAppCount.setText(text));
+    }
+
+    /**
+     * cy10.8 (req 4): sinkronkan kontrol "Pilih aplikasi" dgn mode split
+     * tunnel. ALL APPS ("Semua aplikasi") -> tombol DISABLED + alpha
+     * redup + counter menerangkan bahwa semua app lewat VPN (tidak ada
+     * kontrol yang memberi kesan user wajib memilih app); DIPILIH /
+     * DIKECUALIKAN -> tombol aktif + counter jumlah app terpilih.
+     * Tombol TIDAK disembunyikan supaya tidak ada layout shift (aturan
+     * anti-perubahan visual). glitchStateChange dipanggil SEBELUM
+     * setEnabled hanya saat state benar2 berubah (kontrak cy8, pola
+     * updateAddBtn). Perubahan daftar app split tunnel tetap berlaku
+     * saat connect berikutnya (batas API VpnService: aturan per-UID
+     * ditetapkan saat establish - didokumentasikan di KNOWN_ISSUES).
+     */
+    private void updateSplitTunnelUi(String mk) {
+        boolean pickable = !"all".equals(mk);
+        if (vpnPickAppsBtn.isEnabled() != pickable) {
+            GlitchText.glitchStateChange(vpnPickAppsBtn, pickable);
+        }
+        vpnPickAppsBtn.setEnabled(pickable);
+        vpnPickAppsBtn.setAlpha(pickable ? 1f : 0.4f);
+        updateVpnAppCount();
     }
 
     private String appIpModeLabel(String m) {
@@ -931,6 +963,7 @@ public class MainActivity extends AppCompatActivity {
     // dialog dengan AT_MOST (sama seperti ListView langsung sebelumnya)
     // -> tinggi list = konten ter-cap ruang dialog, perilaku lama.
     private android.widget.LinearLayout buildSearchList(
+            android.view.View aboveSearch,
             android.widget.ListView lv,
             java.util.List<String[]> apps,
             java.util.List<String[]> shown,
@@ -980,6 +1013,16 @@ public class MainActivity extends AppCompatActivity {
         android.widget.LinearLayout box =
                 new android.widget.LinearLayout(dialogCtx());
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        // cy10.8: aboveSearch (opsional) = dropdown aksi massal mode IP -
+        // dipasang paling atas (di atas search, req "di atas list aplikasi"
+        // + alur kerja massal-dulu-baru-fine-tune); null = dialog lain
+        // (Pilih aplikasi) tidak berubah sedikitpun.
+        if (aboveSearch != null) {
+            box.addView(aboveSearch,
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
         box.addView(search, new android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1015,11 +1058,17 @@ public class MainActivity extends AppCompatActivity {
                 new android.text.SpannableStringBuilder();
         // cy10.7: + BLOCK v4/v6 (blokir total versi IP utk app itu;
         // oranye-salmon / merah) + baris prioritas per-app > global
-        // (permintaan eksplisit) + catatan berlakunya (reconnect).
+        // (permintaan eksplisit).
+        // cy10.8: (1) nama ganda IPv4/IPv6 dgn BYPASS - menjembatani
+        // penamaan dropdown massal ("IPv6 saja (bypass IPv4)" = konvensi
+        // dropdown Mode IP global: BYPASS v4 = IPv4 dilewati = mode IPv6);
+        // (2) catatan berlakunya diperbarui: perubahan kini LIVE saat VPN
+        // aktif (bukan lagi "nyalakan ulang"); (3) catatan mode v4/v6
+        // hanya aktif saat global Dual-stack (BLOCK semua mode global).
         String[][] rows = {
                 {"\u25A0", "GLOBAL", " \u2014 ikut mode IP pengaturan utama"},
-                {"\u25A0", "IPv4", " \u2014 paksa koneksi IPv4 utk app ini"},
-                {"\u25A0", "IPv6", " \u2014 paksa koneksi IPv6 utk app ini"},
+                {"\u25A0", "IPv4 / BYPASS v6", " \u2014 paksa koneksi IPv4 utk app ini"},
+                {"\u25A0", "IPv6 / BYPASS v4", " \u2014 paksa koneksi IPv6 utk app ini"},
                 {"\u25A0", "BLOCK v4", " \u2014 tolak IPv4, app ini hanya IPv6"},
                 {"\u25A0", "BLOCK v6", " \u2014 tolak IPv6, app ini hanya IPv4"},
         };
@@ -1042,13 +1091,24 @@ public class MainActivity extends AppCompatActivity {
             sb.append(rows[i][2]);
         }
         // Baris prioritas (req e): mode per aplikasi MENANG atas mode
-        // global; perubahan berlaku saat VPN dinyalakan ulang (req f).
+        // global. cy10.8 (req 2): perubahan LIVE pada sesi aktif - tidak
+        // perlu restart VPN (pengecualian: BLOCK versi yang belum
+        // ditangkap TUN dilaporkan HUD saat itu terjadi).
         sb.append("\n");
         int pStart = sb.length();
         sb.append("Mode per aplikasi menang atas mode global. "
-                + "Berlaku saat VPN dinyalakan ulang.");
+                + "Saat VPN aktif, perubahan langsung diterapkan.");
         sb.setSpan(new android.text.style.ForegroundColorSpan(
                         getColor(R.color.glitch_white)), pStart, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // Batas mode lembut (perilaku cy10.3 dipertahankan): v4/v6 hanya
+        // menyaring TCP SYN saat global dual; BLOCK semua mode global.
+        sb.append("\n");
+        int cStart = sb.length();
+        sb.append("IPv4/IPv6 (BYPASS) hanya aktif saat Mode IP global "
+                + "Dual-stack; BLOCK aktif di semua mode global.");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(
+                        getColor(R.color.glitch_white)), cStart, sb.length(),
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         legend.setText(sb);
         return legend;
@@ -1139,9 +1199,56 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         // cy10.3: search + LEGENDA mode sticky di luar area scroll.
+        // cy10.8: DROPDOWN AKSI MASSAL "Terapkan ke semua aplikasi" di paling
+        // atas (di atas search bar - req "di atas list aplikasi"; alur
+        // kerja: atur massal dulu, lalu fine-tune app tertentu lewat
+        // search/chip). SATU kontrol tambahan - tidak ada tombol bulk lain.
+        // Spinner + GlitchDropdown (decor dialog sudah terpasang
+        // installTouch -> cabang Spinner menyala otomatis). Item 0 =
+        // LABEL AKSI (bukan nilai): memilih item 1..5 menerapkan mode itu
+        // ke SEMUA aplikasi lalu selection kembali ke 0 - menu ini AKSI,
+        // bukan state; label tertutup tidak pernah menampilkan "status
+        // massal" yang bisa basi setelah user mengedit app individual.
+        // Nama BYPASS mengikuti konvensi dropdown Mode IP global
+        // ("IPv6 saja (bypass IPv4)"): BYPASS v4 = IPv4 DILEWATI utk app
+        // itu = mode IPv6 yang sudah ada (paksa koneksi IPv6); BYPASS v6
+        // = mode IPv4. Desc singkat pada tiap item menjembatani penamaan
+        // dgn label chip di row.
+        android.widget.Spinner bulkSp = new android.widget.Spinner(dialogCtx());
+        String[] bulkItems = {
+                "Terapkan ke semua aplikasi...",
+                "GLOBAL \u2014 ikut mode global",
+                "BYPASS v4 \u2014 hanya via IPv6",
+                "BYPASS v6 \u2014 hanya via IPv4",
+                "BLOCK v4 \u2014 tolak IPv4, hanya v6",
+                "BLOCK v6 \u2014 tolak IPv6, hanya v4",
+        };
+        android.widget.ArrayAdapter<String> bulkAd =
+                new android.widget.ArrayAdapter<>(dialogCtx(),
+                        R.layout.spinner_item, bulkItems);
+        bulkAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
+        bulkSp.setAdapter(bulkAd);
+        bulkSp.setMinimumHeight((int) (48 * d)); // area sentuh >= 48dp
+        bulkSp.setPadding((int) (14 * d), (int) (6 * d),
+                (int) (14 * d), (int) (6 * d));
+        bulkSp.setOnItemSelectedListener(
+                new android.widget.AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(android.widget.AdapterView<?> pa,
+                    android.view.View vw, int ps, long id) {
+                if (ps <= 0) return; // placeholder / initial fire / reset
+                // posisi -> nilai mode (BYPASS v4 -> "v6" dst, lihat
+                // komentar blok ini; string kosong = GLOBAL)
+                final String pick = ps == 1 ? "" : ps == 2 ? "v6"
+                        : ps == 3 ? "v4" : ps == 4 ? "block4" : "block6";
+                applyBulkIpMode(pick, apps, vp, ad, lv);
+                // kembali ke placeholder: aksi selesai, bukan state.
+                bulkSp.post(() -> bulkSp.setSelection(0));
+            }
+            public void onNothingSelected(android.widget.AdapterView<?> pa) {}
+        });
         android.view.View legend = buildIpModeLegend();
         android.widget.LinearLayout content =
-                buildSearchList(lv, apps, shown, ad, legend);
+                buildSearchList(bulkSp, lv, apps, shown, ad, legend);
         lv.setAdapter(ad);
         // cy8: dialog "Mode IP per aplikasi" muncul KARENA GLITCH:
         // window flicker + scanline menyapu panel + baris list menyala
@@ -1291,12 +1398,23 @@ public class MainActivity extends AppCompatActivity {
                 // (label row tidak berubah -> tidak ikut glitch).
                 GlitchText.glitchNow(anchor, GlitchText.MEDIUM);
                 updateVpnIpModeCount();
-                // cy10.7 (req f): mode hanya dibaca VpnEngine saat VPN
-                // start -> saat VPN sedang jalan, beri petunjuk reconnect
-                // (persisten tersimpan; berlaku di koneksi berikutnya).
+                // cy10.8 (req 2): LIVE APPLY - tanpa restart VPN. VpnEngine
+                // menukar map mode + buang cache verdict seketika; koneksi
+                // lama yang bertentangan diputus di background (RST/ICMP)
+                // supaya app langsung mengikuti aturan baru. LIVE_PARTIAL
+                // = ada BLOCK utk versi IP yang belum ditangkap route TUN
+                // sesi ini (route VpnService tak bisa diubah setelah
+                // establish) -> penegakan penuh butuh restart.
                 if (VpnEngine.running) {
-                    hud("Mode " + appIpModeLabel(pick)
-                            + " tersimpan - nyalakan ulang VPN utk menerapkan");
+                    int r = VpnEngine.applyAppIpModes();
+                    if (r == VpnEngine.LIVE_PARTIAL) {
+                        hud("Mode " + appIpModeLabel(pick)
+                                + " diterapkan \u2014 BLOCK versi ini butuh"
+                                + " restart VPN utk penegakan penuh");
+                    } else {
+                        hud("Mode " + appIpModeLabel(pick)
+                                + " diterapkan ke sesi aktif");
+                    }
                 }
                 closeIpModeMenu(true);
             });
@@ -1403,6 +1521,66 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * cy10.8 (req 1): terapkan SATU mode ke SEMUA aplikasi - aksi dropdown
+     * "Terapkan ke semua aplikasi" di dialog Mode IP. Satu edit prefs
+     * (satu commit), label/state tiap row di-update SEKETIYA (chip row
+     * terlihat diset langsung + notifyDataSetChanged utk rebind row
+     * lainnya - getView membaca prefs), glitch hanya pada chip yang
+     * berubah di row terlihat (MEDIUM, level yang sama dgn pemilihan
+     * per-app; label nama app tidak berubah -> tidak ikut glitch), lalu
+     * live-apply ke sesi VPN aktif bila jalan (req 2). GLOBAL = hapus
+     * semua key vpn_app_ip_* (semua app kembali ikut mode global).
+     */
+    private void applyBulkIpMode(String pick,
+            java.util.List<String[]> apps,
+            android.content.SharedPreferences vp,
+            android.widget.BaseAdapter ad,
+            android.widget.ListView lv) {
+        android.content.SharedPreferences.Editor ed = vp.edit();
+        int n = 0;
+        if (pick.isEmpty()) {
+            // GLOBAL: kembalikan semua app ke ikut-global (key dihapus,
+            // sama seperti pilihan GLOBAL di popup per-app).
+            for (String k : new java.util.HashSet<>(vp.getAll().keySet())) {
+                if (k.startsWith("vpn_app_ip_")) { ed.remove(k); n++; }
+            }
+        } else {
+            for (String[] a : apps) {
+                ed.putString("vpn_app_ip_" + a[0], pick);
+                n++;
+            }
+        }
+        ed.apply();
+        // Update row terlihat SEKARANG (sebelum pass layout) lalu rebind
+        // sisa list. Chip = elemen ke-2 dari tag row (pola adapter).
+        for (int i = 0; i < lv.getChildCount(); i++) {
+            Object t = lv.getChildAt(i).getTag();
+            if (t instanceof android.view.View[]) {
+                android.widget.Button chip =
+                        (android.widget.Button) ((android.view.View[]) t)[1];
+                chip.setText(appIpModeLabel(pick));
+                applyModeChipStyle(chip, pick);
+                GlitchText.glitchNow(chip, GlitchText.MEDIUM);
+            }
+        }
+        ad.notifyDataSetChanged();
+        updateVpnIpModeCount();
+        String label = appIpModeLabel(pick);
+        log("mode IP: " + label + " diterapkan ke semua aplikasi ("
+                + n + " app)");
+        // req 2: live apply tanpa restart VPN (sama dgn pick per-app).
+        if (VpnEngine.running) {
+            int r = VpnEngine.applyAppIpModes();
+            if (r == VpnEngine.LIVE_PARTIAL) {
+                hud(label + " diterapkan \u2014 sebagian BLOCK butuh"
+                        + " restart VPN utk penegakan penuh");
+            } else {
+                hud(label + " diterapkan ke semua aplikasi (sesi aktif)");
+            }
+        }
+    }
+
     private void showAppPicker() {
         ensureAppCache(this::showAppPickerNow);
     }
@@ -1472,8 +1650,10 @@ public class MainActivity extends AppCompatActivity {
         };
         // cy10.3: search sticky di luar area scroll (tanpa legenda utk
         // dialog ini - tidak ada mode warna yang perlu dijelaskan).
+        // cy10.8: aboveSearch null - dropdown massal hanya milik dialog
+        // Mode IP; struktur dialog ini tidak berubah.
         android.widget.LinearLayout content =
-                buildSearchList(lv, apps, shown, ad, null);
+                buildSearchList(null, lv, apps, shown, ad, null);
         lv.setAdapter(ad);
         // cy8: dialog "Pilih aplikasi" (Split Tunnel) muncul KARENA GLITCH:
         // window flicker + scanline menyapu panel + item list materialize
@@ -2677,11 +2857,19 @@ public class MainActivity extends AppCompatActivity {
                 // SAJA (bukan section/card, bukan seluruh halaman).
                 GlitchText.glitchView(vpnAppMode, GlitchText.MINOR);
                 GlitchText.glitchNow(vpnAppCount, GlitchText.MINOR);
-                updateVpnAppCount();
+                // cy10.8 (req 4): tombol Pilih aplikasi ikut state mode
+                // (disabled saat "Semua aplikasi", aktif saat dipilih/
+                // dikecualikan) + teks counter sadar-mode.
+                updateSplitTunnelUi(mk);
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
         });
-        updateVpnAppCount();
+        // cy10.8 (req 4): state awal tombol mengikuti mode tersimpan
+        // (fire listener awal spinner juga akan melewati jalur yang sama
+        // - idempoten, guard perubahan state di dalamnya).
+        vpnPickAppsBtn = findViewById(R.id.vpnPickAppsBtn);
+        vpnPickAppsBtn.setOnClickListener(vp -> showAppPicker());
+        updateSplitTunnelUi(savedAppMode);
         // Mode IP global: dual / bypass IPv4 / bypass IPv6.
         vpnIpMode = findViewById(R.id.vpnIpMode);
         String[] ipModes = {"Dual-stack (IPv4 + IPv6)",
@@ -2709,7 +2897,6 @@ public class MainActivity extends AppCompatActivity {
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
         });
-        findViewById(R.id.vpnPickAppsBtn).setOnClickListener(vp -> showAppPicker());
         vpnIpModeAppCount = findViewById(R.id.vpnIpModeAppCount);
         updateVpnIpModeCount();
         findViewById(R.id.vpnPickIpModeBtn).setOnClickListener(

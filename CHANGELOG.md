@@ -4,6 +4,73 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.8] — 2026-10-09
+
+### Added
+- **Dropdown aksi massal "Terapkan ke semua aplikasi"** di dialog Mode IP
+  per aplikasi (di atas search bar / list; SATU kontrol tambahan, tanpa
+  tombol bulk lain; dropdown Mode IP global TIDAK disentuh):
+  - Isi: placeholder aksi + GLOBAL / BYPASS v4 / BYPASS v6 / BLOCK v4 /
+    BLOCK v6. Nama BYPASS mengikuti konvensi dropdown global ("IPv6 saja
+    (bypass IPv4)"): **BYPASS v4 → mode IPv6** (v4 dilewati, app hanya
+    via IPv6), **BYPASS v6 → mode IPv4**; GLOBAL menghapus semua key
+    per-app (kembali ikut global). Desc singkat per item + nama ganda di
+    legenda ("IPv6 / BYPASS v4") menjembatani penamaan dgn label chip.
+  - Pilih = terapkan ke SEMUA aplikasi dalam SATU edit prefs, label/state
+    tiap row ter-update seketika (chip row terlihat diset langsung +
+    rebind list), glitch hanya pada chip yang berubah (MEDIUM, level
+    sama dgn pick per-app), counter Setelan ikut, selection kembali ke
+    placeholder (menu AKSI, bukan state yang bisa basi).
+- **Live apply tanpa restart VPN** (per-app maupun massal; alur
+  "tap → update config → apply ke sesi/TUN aktif"):
+  - `VpnEngine.applyAppIpModes()`: tukar map mode (volatile) + kosongkan
+    cache verdict SEKETIKA → semua paket baru (SYN TCP / UDP / DNS)
+    langsung memakai verdict baru; bagian berat (binder conntrack per
+    flow) dijalankan di background thread (UI tidak pernah diblok).
+  - **Koneksi lama yang bertentangan diputus aman**: TCP → RST dari
+    "tujuan" dgn seq/ack benar utk state kini (SYN-SENT: ack=ISS+1;
+    ESTABLISHED: seq=snd.nxt — syarat penerimaan RST RFC 9293) → app
+    dapat ECONNRESET lalu fallback/reconnect; UDP → flow ditutup +
+    ICMP/ICMPv6 unreachable dgn kutipan header IP+UDP SINTETIS dari
+    4-tuple flow (socket app mendapat EHOSTUNREACH). Verdict pemotongan
+    = fungsi verdict jalur paket yang sama; flow app lain tak tersentuh
+    (anti "bypass yang tidak disengaja": justru koneksi tua pelanggar
+    yang ditutup).
+  - Hasil dilaporkan: HUD "diterapkan ke sesi aktif" / counter / logView
+    (`BLOCK/live: aturan per-app diperbarui (N app; …)[; X koneksi lama
+    diputus]`); petunjuk reconnect lama DIHAPUS (tidak lagi relevan).
+  - **LIVE_PARTIAL** (dilaporkan jujur, G10): bila mode BLOCK baru
+    menargetkan versi IP yang belum ditangkap route TUN sesi ini (global
+    non-dual tanpa upgrade start), verdict diterapkan tapi paket versi
+    itu tidak pernah masuk TUN → HUD meminta restart utk penegakan
+    penuh (route VpnService tidak bisa diubah setelah establish;
+    re-establish in-place ditolak karena membuka jendela gap = bocor).
+
+### Changed
+- **Split tunnel tidak ambigu**: saat mode "Semua aplikasi", tombol
+  "Pilih aplikasi..." DISABLED + alpha redup + teks counter "Semua
+  aplikasi lewat VPN" (bukan jumlah pilihan yang tidak dipakai); mode
+  "Hanya/Kecuali yang dipilih" mengaktifkan kembali tombol + counter
+  jumlah app. Tombol tidak disembunyikan (tanpa layout shift);
+  `glitchStateChange` sebelum `setEnabled` (pola updateAddBtn).
+- Legenda Mode IP: baris prioritas kini "…Saat VPN aktif, perubahan
+  langsung diterapkan." + baris baru batas mode lembut ("IPv4/IPv6
+  (BYPASS) hanya aktif saat Mode IP global Dual-stack; BLOCK aktif di
+  semua mode global."). Hint Setelan yang basi ("Hanya berlaku saat
+  Mode IP global = Dual-stack.") diganti teks akurat (BLOCK + live).
+- Prioritas aturan tetap **per-app > global** (perilaku cy10.7,
+  tertulis di legenda; tidak ada perubahan verdict).
+
+### Verifikasi
+- Harness wire-format diperluas 40 → **53 assertion** (kutipan sintetis
+  IP+UDP v4/v6: layout, arah, 4-tuple, pembungkusan ICMP) — menangkap
+  satu bug nyata (byte versi IPv6 kutipan tidak terisi) SEBELUM build
+  dirilis; SEMUA LULUS. Build debug (20MB) + release/R8 (6.2MB) lolos;
+  simbol (debug) & string konstanta (debug+release) terverifikasi di
+  dex. Celah baru yang tidak bisa ditutup dari VpnService didokumentasi
+  (KNOWN_ISSUES §8 G10/G11) — TIDAK diklaim bebas bocor; validasi nyata
+  menunggu checklist device C-tambahan no.6–7.
+
 ## [cy10.7] — 2026-10-09
 
 ### Added

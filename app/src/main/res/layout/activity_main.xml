@@ -743,7 +743,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="Hanya berlaku saat Mode IP global = Dual-stack."
+                            android:text="IPv4/IPv6 per-app hanya berlaku saat Mode IP global Dual-stack; BLOCK berlaku di semua mode global. Saat VPN aktif, perubahan langsung diterapkan."
                             android:textSize="12sp" />
 
                         <TextView

@@ -162,14 +162,24 @@ public class VpnEngine extends VpnService {
     // Mode IP global: "dual" | "v6only" | "v4only". Di-set di onStartCommand.
     private String ipMode = "dual";
     // Mode IP per aplikasi: pkg -> "v4" | "v6" | "block4" | "block6".
-    // Di-set di onStartCommand (dibaca dari SharedPreferences saat start
-    // saja - perubahan mid-sesi tidak berlaku sampai reconnect; UI memberi
-    // petunjuk reconnect, req f).
-    private java.util.Map<String, String> appIpModes =
+    // Di-set di onStartCommand DAN bisa ditukar LIVE mid-sesi (cy10.8
+    // applyAppIpModes - dibaca ulang dari SharedPreferences saat user
+    // mengubah mode per-app / massal di UI). volatile: jalur paket membaca
+    // referensi map - swap atomik, pembaca selalu melihat map lama ATAU
+    // baru yang utuh, tidak pernah setengah terisi.
+    private volatile java.util.Map<String, String> appIpModes =
             java.util.Collections.emptyMap();
     // cy10.7: ada app ber-mode BLOCK? (unci utk auto dual-capture & jalur
     // cepat UDP/DNS yang tidak perlu jalan saat fitur tak dipakai).
-    private boolean anyBlockApp = false;
+    // cy10.8: volatile - ikut ditukar live bersama appIpModes.
+    private volatile boolean anyBlockApp = false;
+    // cy10.8: family yang BENAR-BENAR ditangkap route TUN sesi ini
+    // (ditetapkan saat establish - route VpnService tidak bisa diubah
+    // pada sesi yang sudah jalan). Dipakai utk memberi tahu user bila
+    // live-apply mode BLOCK tidak bisa ditegakkan penuh (family yang
+    // diblok belum masuk TUN -> paketnya tidak pernah sampai ke kita).
+    private volatile boolean tunHasV4 = false;
+    private volatile boolean tunHasV6 = false;
     // Target upstream: IP literal (plain/dot/doq) atau URL lengkap (doh).
     private String dnsTarget = "";
     private SSLSocket dotSocket;      // koneksi DoT persisten (family target)
@@ -241,8 +251,9 @@ public class VpnEngine extends VpnService {
         FlowOwner(int m, String p) { mode = m; pkg = p; }
     }
 
-    // Cache verdict per 4-tuple. Aman seumur sesi VPN: appIpModes hanya
-    // dibaca saat start (tak ada perubahan mid-sesi yang perlu tercermin).
+    // Cache verdict per 4-tuple. Verdict dibuang & dibangun ulang saat
+    // mode berubah (cy10.8 live apply: ownerCache.clear() bersama swap
+    // appIpModes) - entri lama bisa memegang verdict mode yang sudah basi.
     // Cap 2048 + clear penuh (sederhana, deterministik; rebuild via lookup).
     private final ConcurrentHashMap<String, FlowOwner> ownerCache =
             new ConcurrentHashMap<>();
@@ -313,6 +324,9 @@ public class VpnEngine extends VpnService {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (running) return START_NOT_STICKY;
         try {
+            // cy10.8: appCtx duluan - readAppIpModes() butuh context utk
+            // membaca prefs (helper yang sama dipakai jalur live apply).
+            appCtx = getApplicationContext();
             Builder b = new Builder();
             b.setSession("wpmulti-vpn");
             b.setMtu(MTU);
@@ -328,22 +342,7 @@ public class VpnEngine extends VpnService {
             // jadi menangkap versi itu utk SATU app = menangkap utk semua;
             // konsekuensinya (trafik versi "bypass" app lain kini ikut
             // tunnel, bukan direct) dicatat di KNOWN_ISSUES.
-            java.util.Map<String, String> aim = new java.util.HashMap<>();
-            try {
-                android.content.SharedPreferences sp =
-                        getSharedPreferences("vpn", MODE_PRIVATE);
-                for (java.util.Map.Entry<String, ?> e
-                        : sp.getAll().entrySet()) {
-                    String k = e.getKey();
-                    if (k.startsWith("vpn_app_ip_")
-                            && e.getValue() instanceof String) {
-                        aim.put(k.substring("vpn_app_ip_".length()),
-                                (String) e.getValue());
-                    }
-                }
-            } catch (Exception ex) {
-                android.util.Log.w(TAG, "baca mode IP per-app gagal: " + ex);
-            }
+            java.util.Map<String, String> aim = readAppIpModes();
             appIpModes = aim;
             ownerCache.clear();
             anyBlockApp = false;
@@ -357,21 +356,31 @@ public class VpnEngine extends VpnService {
                     + (anyBlockApp ? " (BLOCK v4: " + nBlock4
                       + ", BLOCK v6: " + nBlock6 + ")" : ""));
             boolean upgraded = false;
+            // cy10.8: catat family yang BENAR-BENAR ditangkap route TUN
+            // sesi ini - route tidak bisa diubah setelah establish (batas
+            // API VpnService); live apply mode BLOCK pada family yang tak
+            // ditangkap tidak bisa ditegakkan penuh (paket tak pernah masuk
+            // TUN) -> dilaporkan ke user via LIVE_PARTIAL.
+            tunHasV4 = tunHasV6 = false;
             if ("v6only".equals(ipMode)) {
                 b.addAddress(VPN_ADDR6, VPN_PREFIX6);
                 b.addRoute("::", 0);
+                tunHasV6 = true;
                 if (anyBlockApp) {
                     // BLOCK v4 butuh paket v4 masuk TUN -> capture v4 juga
                     b.addAddress(VPN_ADDR, VPN_PREFIX);
                     b.addRoute("0.0.0.0", 0);
+                    tunHasV4 = true;
                     upgraded = true;
                 }
             } else if ("v4only".equals(ipMode)) {
                 b.addAddress(VPN_ADDR, VPN_PREFIX);
                 b.addRoute("0.0.0.0", 0);
+                tunHasV4 = true;
                 if (anyBlockApp) {
                     b.addAddress(VPN_ADDR6, VPN_PREFIX6);
                     b.addRoute("::", 0);
+                    tunHasV6 = true;
                     upgraded = true;
                 }
             } else {
@@ -380,6 +389,7 @@ public class VpnEngine extends VpnService {
                 b.addAddress(VPN_ADDR6, VPN_PREFIX6);
                 b.addRoute("0.0.0.0", 0);
                 b.addRoute("::", 0); // tangkap juga trafik IPv6 -> anti bocor
+                tunHasV4 = tunHasV6 = true;
             }
             this.ipMode = ipMode;
             if (anyBlockApp) {
@@ -401,7 +411,6 @@ public class VpnEngine extends VpnService {
             if (tgt == null || tgt.isEmpty()) tgt = ip;
             dnsMode = m;
             dnsTarget = tgt;
-            appCtx = getApplicationContext();
             // Iklan DNS harus terjangkau lewat TUN: pada v6only pakai
             // IPv6, pada v4only pakai IPv4 (fallback bila tidak cocok).
             // Upstream (dnsTarget) tetap lewat socket ter-proteksi.
@@ -508,6 +517,131 @@ public class VpnEngine extends VpnService {
         }
         // NOT_STICKY: VPN tidak boleh hidup lagi sendiri tanpa aksi user
         return START_NOT_STICKY;
+    }
+
+    // ================= live apply mode IP per-app (cy10.8) =================
+
+    /** Baca mode IP per-app dari SharedPreferences "vpn"
+     * (key vpn_app_ip_<pkg> -> "v4"|"v6"|"block4"|"block6"). Satu sumber
+     * utk onStartCommand dan jalur live apply - SharedPreferences adalah
+     * instance cache per-proses yang sama dengan penulisnya (MainActivity,
+     * proses utama; VpnEngine juga proses utama), jadi apply() dari UI
+     * langsung terlihat tanpa menunggu flush disk. */
+    private static java.util.Map<String, String> readAppIpModes() {
+        java.util.Map<String, String> aim = new java.util.HashMap<>();
+        try {
+            android.content.SharedPreferences sp = appCtx
+                    .getSharedPreferences("vpn", Context.MODE_PRIVATE);
+            for (java.util.Map.Entry<String, ?> e : sp.getAll().entrySet()) {
+                String k = e.getKey();
+                if (k.startsWith("vpn_app_ip_")
+                        && e.getValue() instanceof String) {
+                    aim.put(k.substring("vpn_app_ip_".length()),
+                            (String) e.getValue());
+                }
+            }
+        } catch (Exception ex) {
+            android.util.Log.w(TAG, "baca mode IP per-app gagal: " + ex);
+        }
+        return aim;
+    }
+
+    // Hasil applyAppIpModes().
+    /** Tidak ada sesi aktif - prefs tersimpan, berlaku saat start. */
+    public static final int LIVE_NOP = 0;
+    /** Diterapkan penuh ke sesi aktif (semua verdict jalan seketika). */
+    public static final int LIVE_OK = 1;
+    /** Verdict diterapkan, TAPI ada mode BLOCK utk family yang belum
+     * ditangkap route TUN sesi ini -> paket family itu tidak pernah masuk
+     * TUN sehingga tidak bisa ditolak; penegakan penuh butuh restart VPN
+     * (route VpnService tidak bisa diubah setelah establish). */
+    public static final int LIVE_PARTIAL = 2;
+
+    /**
+     * cy10.8 (req 2): terapkan mode IP per-app KE SESI AKTIF tanpa restart
+     * VPN. Dipanggil MainActivity SETELAH prefs ditulis (ubah per-app
+     * maupun aksi massal "terapkan ke semua aplikasi"). Alur: tukar map
+     * mode (volatile) + buang cache verdict -> paket BARU (SYN/UDP/DNS)
+     * langsung memakai verdict baru; koneksi/flow LAMA yang bertentangan
+     * diputus di background (RST/ICMP) supaya app segera mengikuti aturan
+     * baru dan bisa fallback/reconnect. Tidak pernah memutus flow yang
+     * TIDAK bertentangan - justru sebaliknya, inilah yang mencegah
+     * "bypass yang tidak disengaja" dari koneksi tua yang lolos.
+     */
+    public static int applyAppIpModes() {
+        VpnEngine v = inst;
+        if (v == null || !running) return LIVE_NOP;
+        return v.applyLive();
+    }
+
+    private int applyLive() {
+        java.util.Map<String, String> aim = readAppIpModes();
+        int nb4 = 0, nb6 = 0;
+        for (String m : aim.values()) {
+            if ("block4".equals(m)) nb4++;
+            else if ("block6".equals(m)) nb6++;
+        }
+        // Bagian sinkron (murah, tanpa binder): swap map + reset cache.
+        // Jalur paket melihat map lama ATAU baru yang utuh (volatile ref).
+        appIpModes = aim;
+        anyBlockApp = nb4 + nb6 > 0;
+        ownerCache.clear();
+        // Family yang dibutuhkan mode BLOCK vs yang ditangkap TUN ini.
+        boolean partial = (nb4 > 0 && !tunHasV4) || (nb6 > 0 && !tunHasV6);
+        // Bagian lambat (connOwnerUid = binder call per flow) di background:
+        // jangan blok main thread UI. Verdict utk paket baru SUDAH aktif
+        // sejak swap di atas; sweep ini hanya menutup koneksi lama.
+        final boolean fpartial = partial;
+        final int fnb4 = nb4, fnb6 = nb6, fsize = aim.size();
+        ExecutorService p = pool;
+        if (p != null) {
+            p.execute(() -> {
+                try {
+                    int cut = cutConflictingFlows();
+                    blockLogOffer("live: aturan per-app diperbarui ("
+                            + fsize + " app; BLOCK v4: " + fnb4
+                            + ", v6: " + fnb6 + ")"
+                            + (cut > 0 ? "; " + cut + " koneksi lama diputus" : "")
+                            + (fpartial ? "; PERHATIAN: ada BLOCK utk versi IP"
+                              + " yang belum ditangkap TUN - restart VPN utk"
+                              + " penegakan penuh" : ""));
+                } catch (Throwable t) {
+                    android.util.Log.w(TAG, "cutConflictingFlows: " + t);
+                }
+            });
+        }
+        return partial ? LIVE_PARTIAL : LIVE_OK;
+    }
+
+    /**
+     * Putus SEMUA koneksi TCP & flow UDP yang bertentangan dgn mode yang
+     * BARU saja diterapkan. Verdict memakai fungsi yang sama dgn jalur
+     * paket (synAction utk TCP; utk UDP hanya mode BLOCK - konsisten dgn
+     * handleUdp* yang memang tidak menyaring UDP utk mode v4/v6 lama).
+     * Atribusi via conntrack: koneksi TCP ESTABLISHED punya entri stabil;
+     * flow UDP one-shot bisa kedaluwarsa -> gagal atribusi = dibiarkan
+     * (fail-open, flow idle-timeout <=60 dtk atau paket berikutnya kena
+     * verdict baru di handleUdp*). Flow app LAIN tidak pernah tersentuh.
+     */
+    private int cutConflictingFlows() {
+        int n = 0;
+        for (TcpConn c : tcpConns.values()) {
+            boolean v6 = c.isV6();
+            FlowOwner o = flowOwner(v6, 6, c.srcB, c.srcPort,
+                    c.dstB, c.dstPort);
+            if (o == null) continue;
+            if (synAction(o, v6) != 0) { c.resetHard(); n++; }
+        }
+        for (UdpFlow f : udpFlows.values()) {
+            FlowOwner o = flowOwner(f.v6, 17, f.srcB, f.srcPort,
+                    f.dstB, f.dstPort);
+            if (o == null) continue;
+            if ((o.mode == 3 && !f.v6) || (o.mode == 4 && f.v6)) {
+                f.unreachAndClose();
+                n++;
+            }
+        }
+        return n;
     }
 
     @Override
@@ -1753,6 +1887,30 @@ public class VpnEngine extends VpnService {
             closeSocket();
         }
 
+        /**
+         * cy10.8 (live apply): putus keras karena mode app ini berubah
+         * menjadi mode yang bertentangan dgn koneksi ini. RST dikirim
+         * dari "tujuan" dgn seq/ack yang benar utk state kini sehingga
+         * socket app langsung mendapat ECONNRESET (bukan timeout):
+         * - SYN-SENT (state 0): ack = clientSeq = ISS+1 - persis syarat
+         *   RST yang diterima kernel pada state ini (RFC 9293).
+         * - ESTABLISHED (state 1): seq = serverSeq (snd.nxt kita = byte
+         *   berikutnya yang diharapkan app dari "server") -> masuk
+         *   receive window app, RST diterima.
+         * Setelah state=2, relay/dial berhenti sendiri (guard state di
+         * connectViaSocks/startRelay/onPacket) dan socket SOCKS ditutup.
+         */
+        void resetHard() {
+            synchronized (lock) {
+                if (state == 2) return;
+                state = 2;
+                sendTcp(dstB, dstPort, srcB, srcPort,
+                        serverSeq, clientSeq, 0x14, 0, null);
+            }
+            removeSelf();
+            closeSocket();
+        }
+
         private void closeSocket() {
             try {
                 if (socks != null) socks.close();
@@ -2068,6 +2226,47 @@ public class VpnEngine extends VpnService {
                 if (s != null) s.close();
             } catch (Exception ignored) {}
             udpFlows.remove(key, this);
+        }
+
+        /**
+         * cy10.8 (live apply): tutup flow + kirim ICMP/ICMPv6 destination
+         * unreachable dari "tujuan" dgn paket kutipan SINTETIS (header IP
+         * + header UDP flow ini - cukup utk kernel mengaitkan error ke
+         * socket app yang ter-connect(), RFC 792/4443 hanya mensyaratkan
+         * kutipan header). Socket app mendapat EHOSTUNREACH seketika ->
+         * app langsung fallback/reconnect versi yang diizinkan, bukan
+         * menunggu timeout atau idle-timeout flow.
+         */
+        void unreachAndClose() {
+            try {
+                byte[] q;
+                if (v6) {
+                    q = new byte[40 + 8];
+                    q[0] = 0x60; // version 6 (hasil audit harness cy10.8)
+                    q[6] = 17; // next header = UDP
+                    put16(q, 4, 8); // payload length
+                    System.arraycopy(srcB, 0, q, 8, 16);
+                    System.arraycopy(dstB, 0, q, 24, 16);
+                } else {
+                    q = new byte[20 + 8];
+                    q[0] = 0x45;
+                    put16(q, 2, q.length);
+                    q[8] = 64; // TTL
+                    q[9] = 17; // protocol = UDP
+                    System.arraycopy(srcB, 0, q, 12, 4);
+                    System.arraycopy(dstB, 0, q, 16, 4);
+                }
+                // header UDP di ujung kutipan: sport/dport/len/csum(0)
+                put16(q, q.length - 8, srcPort);
+                put16(q, q.length - 6, dstPort);
+                put16(q, q.length - 4, 8);
+                put16(q, q.length - 2, 0);
+                sendUnreach(v6, srcB, dstB, q);
+            } catch (Exception ignored) {
+                // kutipan gagal dibangun -> tetap tutup flow (app berhenti
+                // mendapat balasan; paket berikutnya kena verdict baru).
+            }
+            close();
         }
     }
 

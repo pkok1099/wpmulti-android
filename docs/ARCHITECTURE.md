@@ -1,7 +1,7 @@
 # ARCHITECTURE — wpmulti-android
 
 Peta arsitektur proyek untuk melanjutkan pekerjaan tanpa membaca seluruh
-riwayat commit. Terakhir diperbarui: **cy10.7** (2026-10-09).
+riwayat commit. Terakhir diperbarui: **cy10.8** (2026-10-09).
 
 ## 1. Struktur proyek
 
@@ -66,7 +66,11 @@ Build: `./gradlew assembleDebug` (JDK 17). Output:
   `ST_IDLE/STARTING/RUNNING/STOPPING` + watchdog start 60 dtk.
 - **Per-app (split tunnel)**: `vpn_apps` (StringSet) di SharedPreferences
   `vpn`; **mode IP per aplikasi**: key `vpn_app_ip_<pkg>` (""=global,
-  `"v4"`, `"v6"`), berlaku saat VPN connect berikutnya.
+  `"v4"`, `"v6"`, `"block4"`, `"block6"`) — dibaca saat VPN start dan
+  bisa ditukar **LIVE mid-sesi** (cy10.8 `VpnEngine.applyAppIpModes()`,
+  dipanggil UI setelah prefs berubah — lihat §9). Daftar app split-tunnel
+  (allow/deny) tetap hanya berlaku saat connect berikutnya: aturan
+  per-UID VpnService ditetapkan saat establish dan tidak bisa diubah.
 
 ## 3. Alur UI
 
@@ -191,10 +195,19 @@ Struktur dialog "Pilih aplikasi" & "Mode IP per aplikasi" (cy10.3):
 AlertDialog
 ├── Judul (selalu terlihat — bagian dari window)
 └── custom view = buildSearchList(): LinearLayout vertikal
+    ├── [dropdown massal mode IP] ← hanya dialog Mode IP (cy10.8:
+    │   Spinner "Terapkan ke semua aplikasi..." di ATAS segalanya;
+    │   item 0 = label aksi, memilih item = terapkan ke semua app
+    │   lalu selection kembali ke 0 — menu AKSI, bukan state)
     ├── EditText search   ← STICKY: di luar area scroll
     ├── [legenda mode IP] ← hanya dialog Mode IP
     └── ListView          ← hanya ini yang scroll
 ```
+
+Split tunnel di halaman Setelan (cy10.8): saat mode "Semua aplikasi",
+tombol Pilih aplikasi DISABLED (alpha 0.4, pola updateAddBtn — tidak
+disembunyikan agar tidak ada layout shift) dan teks counter menjadi
+"Semua aplikasi lewat VPN" (bukan jumlah pilihan yang tidak dipakai).
 
 Keyboard: `fixDialogIme()` (clear `FLAG_ALT_FOCUSABLE_IM` +
 `SOFT_INPUT_STATE_VISIBLE|ADJUST_RESIZE`) + click→`showSoftInput`.
@@ -280,17 +293,52 @@ via WireGuard, forwarder DNS). Tidak ada perubahan engine Go.
 
 ### Nilai mode & prioritas
 `vpn_app_ip_<pkg>` di SharedPreferences `vpn`: `""` (GLOBAL), `v4`, `v6`,
-`block4`, `block6`. Dibaca **sekali saat VPN start** (perubahan berlaku
-setelah VPN dinyalakan ulang — UI menampilkan petunjuk HUD bila mengubah
-mode saat VPN jalan). **Per-app menang atas global** (tertulis di legenda
-dialog): mode BLOCK ditegakkan di SEMUA mode global; mode v4/v6 (lama)
-tetap hanya berlaku saat global dual (perilaku cy10.3 tidak diubah).
+`block4`, `block6`. Dibaca saat VPN start **dan ditukar LIVE saat user
+mengubah mode (per-app maupun massal) saat VPN jalan** — cy10.8
+`applyAppIpModes()`, lihat bawah. **Per-app menang atas global** (tertulis
+di legenda dialog): mode BLOCK ditegakkan di SEMUA mode global; mode
+v4/v6 (lama) tetap hanya berlaku saat global dual (perilaku cy10.3
+tidak diubah). **Aksi massal (cy10.8)**: dropdown "Terapkan ke semua
+aplikasi" di atas list dialog — GLOBAL / BYPASS v4 / BYPASS v6 /
+BLOCK v4 / BLOCK v6. Nama BYPASS mengikuti konvensi dropdown global
+("IPv6 saja (bypass IPv4)" = v4 dibypass): **BYPASS v4 → mode "v6"**
+(app hanya via IPv6), **BYPASS v6 → mode "v4"**; GLOBAL menghapus
+semua key (semua app kembali ikut global). Terapkan = satu edit
+prefs + refresh label/state semua row + live apply bila VPN aktif.
+
+### Live apply tanpa restart (cy10.8)
+`VpnEngine.applyAppIpModes()` (static, dipanggil UI di main thread
+SETELAH prefs ditulis; prefs & service sama-sama proses utama sehingga
+nilai baru langsung terlihat):
+1. **Sinkron & murah**: baca ulang prefs (`readAppIpModes`), tukar
+   `appIpModes` (volatile — jalur paket selalu melihat map utuh),
+   set `anyBlockApp`, **buang seluruh `ownerCache`** (verdict lama
+   bisa basi). Sejak titik ini SEMUA paket baru (SYN/UDP/DNS) memakai
+   verdict baru.
+2. **Background (pool)**: `cutConflictingFlows()` — putus koneksi
+   lama yang BERTENTANGAN dgn mode baru: TCP → `TcpConn.resetHard()`
+   (RST dari "tujuan", seq=snd.nxt/ack=rcv.nxt kita — memenuhi syarat
+   penerimaan RST RFC 9293 baik di SYN-SENT [ack=ISS+1] maupun
+   ESTABLISHED [seq dalam window]); UDP → `UdpFlow.unreachAndClose()`
+   (ICMP/ICMPv6 unreachable dgn kutipan IP+UDP header SINTETIS dari
+   4-tuple flow — kernel mengaitkan EHOSTUNREACH ke socket app).
+   Verdict pemotongan = fungsi yang sama dgn jalur paket (synAction utk
+   TCP; BLOCK-only utk UDP — konsisten dgn handleUdp*). Flow yang tak
+   bisa diatribusi dibiarkan (fail-open; paket berikutnya kena verdict
+   baru). Flow app lain tidak pernah tersentuh. connOwnerUid = binder
+   call per flow → hanya di background thread, tidak pernah di UI.
+3. **Return code**: `LIVE_OK` (penuh) / `LIVE_PARTIAL` (ada BLOCK utk
+   family yang belum ditangkap route TUN sesi ini — packet family itu
+   tidak pernah masuk TUN sehingga tidak bisa ditolak; HUD memberi
+   tahu, penegakan penuh butuh restart; batas API: route VpnService
+   tidak bisa diubah setelah establish, `tunHasV4/V6` dicatat saat
+   start) / `LIVE_NOP` (VPN mati — berlaku saat start berikutnya).
 
 ### Atribusi pemilik paket
 `ConnectivityManager.getConnectionOwnerUid(proto, local, remote)` (TCP 6 /
 UDP 17; API 29+, minSdk 34) → `getPackagesForUid` → mode. Hasil di-cache
-per 4-tuple (`ownerCache`, cap 2048, aman seumur sesi karena mode hanya
-dibaca saat start). **Fail-open**: uid tak dikenal → diizinkan. ICMP
+per 4-tuple (`ownerCache`, cap 2048) — cache dikosongkan saat start dan
+setiap live apply. **Fail-open**: uid tak dikenal → diizinkan. ICMP
 tidak bisa diatribusikan (API hanya TCP/UDP) — lihat KNOWN_ISSUES §8.
 
 ### Penegakan BLOCK di TUN (req 2a+2b)
@@ -331,8 +379,10 @@ parsial terakhir dipancarkan saat cleanup.
 
 ### Verifikasi statis
 Wire-format diverifikasi harness Java murni (`scripts` workspace agent,
-40 assertion): parser qname/qtype (termasuk fail-open pendek/QDCOUNT≠1/
-terpotong), header NODATA (NOERROR+0 answer, RD diecho), ICMP 3/1 & 1/0
-(arah src/dst, kutipan, cap 536/1232), checksum IP/ICMP/pseudo-v6/RST
-semua valid. Build debug + release/R8 lolos; simbol & string BLOCK
-terverifikasi di dex kedua build.
+53 assertion — cy10.7 40 + cy10.8 13): parser qname/qtype (termasuk
+fail-open pendek/QDCOUNT≠1/terpotong), header NODATA (NOERROR+0 answer,
+RD diecho), ICMP 3/1 & 1/0 (arah src/dst, kutipan, cap 536/1232), checksum
+IP/ICMP/pseudo-v6/RST semua valid; cy10.8: kutipan sintetis IP+UDP utk
+cut UDP (layout/arah/4-tuple versi 4 & 6 — harness menangkap bug versi
+byte IPv6 kosong sebelum build dirilis). Build debug + release/R8 lolos;
+simbol & string BLOCK terverifikasi di dex kedua build.

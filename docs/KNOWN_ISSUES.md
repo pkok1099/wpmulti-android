@@ -242,6 +242,8 @@ jujur, TIDAK diklaim "tidak ada kebocoran":
 | G7 | connOwnerUid fail-open | Paket versi diblok lolos bila uid tidak dikenal (race conntrack yang sangat jarang, kegagalan binder) | Prinsip lama proyek: putus total lebih buruk daripada lolos sesaat; volume normal: lookup berhasil deterministik |
 | G8 | Auto dual-capture mengubah jalur app lain | Global v6only/v4only + ada app BLOCK → versi "bypass" app lain kini ikut tunnel (bukan direct) | Route per-TUN bersifat global; menangkap versi utk SATU app = menangkap utk semua. Dilaporkan eksplisit di log start BLOCK |
 | G9 | UDP one-shot dgn port sumber baru per paket | Cache verdict miss → lookup per paket (beban CPU, bukan bocor) | Perilaku app; lookup tetap benar hanya lebih mahal |
+| G10 | Live-apply mode BLOCK saat global non-dual DAN TUN tidak menangkap family yang diblok (BLOCK baru pertama kali utk family itu, tanpa restart) | Verdict/SYN/UDP/DNS baru sudah ditegakkan, tetapi paket versi itu TIDAK PERNAH masuk TUN → tidak bisa ditolak; koneksi lama versi itu sudah diputus | Route VpnService ditetapkan saat establish dan tidak ada API utk mengubahnya pada sesi jalan; re-establish in-place menciptakan jendela gap route (= bocor sesaat — lebih buruk). UI memberi tahu via HUD "restart VPN utk penegakan penuh" + log; restart berikutnya otomatis dual-capture |
+| G11 | Live-apply memutus koneksi lama yang bertentangan; atribusi conntrack UDP bisa kedaluwarsa utk flow one-shot | Flow UDP lama app yang baru di-BLOCK bisa tetap hidup sampai idle-timeout (<=60 dtk) atau paket berikutnya | getConnectionOwnerUid hanya melihat entri conntrack yang masih ada; fail-open dipilih (memutus flow app lain yang salah = lebih buruk). TCP tidak terkena (conntrack ESTABLISHED stabil) |
 
 Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
 - Query DNS app BLOCK ke server versi yang diblok TETAP dijawab lokal
@@ -251,8 +253,16 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
   resolver hanya mencoba server versi itu.
 - Mode v4/v6 lama TIDAK difungsikan di global non-dual (perilaku cy10.3
   dipertahankan); hanya BLOCK yang memicu dual-capture.
+- Aksi massal "Terapkan ke semua aplikasi" menulis key utk SEMUA app
+  terinstal (termasuk app sistem) — konsisten dgn isi list dialog itu
+  sendiri; konsekuensinya counter "N aplikasi diatur" = jumlah seluruh
+  app. GLOBAL (massal) menghapus semua key.
+- Perubahan daftar app split-tunnel (allow/deny) TIDAK live — tetap
+  berlaku saat connect berikutnya (aturan per-UID VpnService fix saat
+  establish); tombol Pilih aplikasi hanya disabled saat mode "Semua
+  aplikasi" agar UI tidak ambigu (cy10.8).
 
-### C-tambahan. Checklist device cy10.7 (BLOCK + navbar)
+### C-tambahan. Checklist device cy10.7–cy10.8 (BLOCK + navbar + live apply)
 
 4. **BLOCK v4/v6** (butuh jaringan dual-stack atau tunnel dual):
    - Set app uji (mis. browser) ke BLOCK v4 → situs cek IP: kolom v4
@@ -260,8 +270,11 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
      normal; logView menampilkan `BLOCK[30s] <pkg>: drop v4=… (tot …)`
      setiap ±30 dtk saat app aktif mencoba v4;
    - BLOCK v6 → kebalikan;
-   - ganti mode saat VPN jalan → HUD muncul "tersimpan - nyalakan ulang
-     VPN"; setelah restart VPN mode baru berlaku;
+   - ganti mode saat VPN jalan → HUD "… diterapkan ke sesi aktif"
+     (cy10.8: LIVE, tanpa restart); mode baru langsung efektif — uji:
+     ubah app yang sedang loading ke BLOCK versi yang dipakainya →
+     koneksi terputus cepat (RST/ICMP) lalu app fallback/reconnect
+     versi yang diizinkan, BUKAN menggantung sampai timeout;
    - uji reconnect: matikan VPN tiba-tiba ( airplane mode ) → auto-
      reconnect membawa mode yang sama (mode dibaca ulang dari prefs);
    - global mode Dual → BLOCK langsung efektif; global v6only/v4only →
@@ -273,3 +286,30 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
 5. **Navbar pill (fix cy10.7)**: indikator aktif terpusat vertikal
    terhadap blok ikon+label (bukan miring ke bawah); jarak konten ke
    lengkungan kiri = ke kanan; tetap tanpa kotak/label terpotong.
+6. **Dropdown massal + live apply (cy10.8)** — dialog "Mode IP per
+   aplikasi" saat VPN AKTIF:
+   - dropdown "Terapkan ke semua aplikasi..." di paling atas (di atas
+     search), membuka popup cybercore (GlitchDropdown); pilih
+     "BLOCK v4 — tolak IPv4, hanya v6" → SEMUA chip row berubah jadi
+     BLOCK v4 seketika + glitch per chip; counter Setelan ikut berubah;
+     label dropdown kembali ke "Terapkan ke semua aplikasi...";
+   - pilih "BYPASS v4 — hanya via IPv6" → semua chip jadi "IPv6"
+     (BYPASS v4 = v4 dilewati = mode IPv6 — lihat legenda); BYPASS v6 →
+     chip "IPv4"; "GLOBAL — ikut mode global" → semua chip Global +
+     counter "Belum ada aplikasi diatur";
+   - verifikasi live: pilih BYPASS v4 massal → app yang punya koneksi
+     v4 aktif terputus & fallback ke v6 TANPA restart VPN; logView
+     muncul baris `BLOCK/live: aturan per-app diperbarui (N app…`;
+   - global v6only + TUN belum menangkap v4 + pilih BLOCK v4 (massal /
+     per-app) → HUD "… restart VPN utk penegakan penuh" (LIVE_PARTIAL);
+     setelah restart, log start menulis dual-capture;
+   - ubah mode per-app SETELAH aksi massal (fine-tune) → hanya chip
+     itu yang berubah (aksi massal tidak "menjebak" state).
+7. **Split tunnel (cy10.8)** — halaman Setelan:
+   - mode "Semua aplikasi" → tombol "Pilih aplikasi..." DISABLED
+     (redup, tak bisa ditekan, TIDAK hilang — tidak ada layout shift)
+     + teks counter "Semua aplikasi lewat VPN";
+   - pindah ke "Hanya yang dipilih"/"Kecuali yang dipilih" → tombol
+     aktif kembali + counter jumlah app; perubahan daftar tetap
+     berlaku saat connect berikutnya (bukan live — by design);
+   - search/keyboard/checkbox/glitch di kedua dialog tak berubah.
