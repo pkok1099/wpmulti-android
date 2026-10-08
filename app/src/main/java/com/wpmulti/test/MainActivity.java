@@ -1,7 +1,6 @@
 package com.wpmulti.test;
 
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
@@ -17,7 +16,6 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -541,45 +539,39 @@ public class MainActivity extends AppCompatActivity {
         if (pageId == R.id.pageLog) renderLog(); // flush log yang tertunda saat masuk halaman Log
     }
 
-    // cy7: id item nav terakhir aktif - untuk glitch PER-ITEM navbar.
-    private int lastNavItemId = -1;
+    // cy7: id item nav terakhir aktif - kini internal CyberNavBar
+    // (efek per-item dipicu di dalam bar; MainActivity hanya menerima
+    // event pilihan). Disimpan hanya utk referensi state di listener.
 
     /**
-     * cy7: perubahan active state navbar = glitch pada ITEM yang berubah,
-     * masing-masing (item lama korupsi MINOR, item baru rekonstruksi
-     * MEDIUM). Pill background TIDAK disentuh - tanpa alpha flicker pada
-     * view ber-elevation (artifact kotak = layer clipping shadow, lihat
-     * docs GlitchText.glitchView).
+     * cy10.4: body handler navigasi (dipakai listener CyberNavBar DAN
+     * sekali di cold start — menggantikan efek listener BNV yang dulu
+     * terpicu setSelectedItemId awal). Isi identik dengan era BNV.
      */
-    private void glitchNavItems(BottomNavigationView bnv,
-            int oldId, int newId) {
-        if (oldId == -1 || oldId == newId) return;
-        if (!(bnv.getChildAt(0) instanceof android.view.ViewGroup)) return;
-        android.view.ViewGroup menuView =
-                (android.view.ViewGroup) bnv.getChildAt(0);
-        android.view.Menu m = bnv.getMenu();
-        int oi = -1, ni = -1;
-        for (int i = 0; i < m.size(); i++) {
-            int iid = m.getItem(i).getItemId();
-            if (iid == oldId) oi = i;
-            if (iid == newId) ni = i;
+    private boolean handleNavSelection(int id) {
+        if (id == R.id.navHome) {
+            rebuildProxyTable();
+            updateVpnUi();
+            showPage(R.id.pageHome);
+        } else if (id == R.id.navSesi) {
+            rebuildProxyTable();
+            showPage(R.id.pageSesi);
+        } else if (id == R.id.navLog) {
+            showPage(R.id.pageLog);
+        } else if (id == R.id.navSetelan) {
+            showPage(R.id.pageSetting);
         }
-        // cy8: label item nav di-inflate LAZY oleh BNV (setelah onCreate,
-        // setelah registerTree(rootMain) dijalankan) -> daftarkan di sini
-        // agar span korupsi benar-benar menyala (dedup idempotent di
-        // dalam walk, murah dipanggil berulang).
-        GlitchText.registerTree(menuView);
-        if (oi >= 0 && oi < menuView.getChildCount()) {
-            View it = menuView.getChildAt(oi);
-            GlitchText.glitchTree(it, GlitchText.MINOR);
-            GlitchText.glitchJitter(it, GlitchText.MINOR);
-        }
-        if (ni >= 0 && ni < menuView.getChildCount()) {
-            View it = menuView.getChildAt(ni);
-            GlitchText.glitchTree(it, GlitchText.MEDIUM);
-            GlitchText.glitchJitter(it, GlitchText.MINOR);
-        }
+        return true;
     }
+
+    /**
+     * cy10.4: navbar = CyberNavBar (view framework polos). Efek glitch
+     * per-item (lama MINOR, baru MEDIUM + jitter) dipicu INTERNAL oleh
+     * CyberNavBar.select() dengan target eksplisit — API GlitchText yang
+     * sama sejak cy7/cy8, dipindah ke dalam bar agar pill tidak pernah
+     * dioperasikan secara keseluruhan (kontrak: area nav tidak pernah
+     * alpha; hanya span label + translationX per item).
+     */
 
     // cy8: setText hanya bila isi benar-benar berubah - label yang
     // di-refresh tiap tick (updateVpnUi) tidak memicu watcher glitch
@@ -2641,56 +2633,27 @@ public class MainActivity extends AppCompatActivity {
         // dropdown dibuka) di seluruh halaman.
         GlitchText.installTouch(findViewById(R.id.rootMain));
 
-        // bottom navigation (4 tab) — pengganti navigasi drawer lama
-        BottomNavigationView bnv = findViewById(R.id.bottomNav);
-        // cy8 FIX ARTIFACT KOTAK: pill nav TIDAK BOLEH di-alpha-flicker
-        // (glitchView) - alpha < 1 memaksa offscreen layer yang ter-clip
-        // bounds persegi sehingga shadow terpotong berbentuk KOTAK di
-        // sekitar pill. cy10.3: pill kini TANPA elevation & TANPA lib
-        // MaterialShapeDrawable (FrameLayout + capsule XML + elevation 0
-        // - lihat activity_main.xml) sehingga mesin yang dulu menghasilkan
-        // kotak sudah tidak ada; aturan ini tetap dijaga sebagai kontrak:
-        // efek pada area nav = displacement murni (glitchJitter) + glitch
-        // per-item lewat glitchNavItems di bawah, TIDAK PERNAH alpha.
-        bnv.setOnTouchListener((v, ev) -> {
-            if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                View pillGlitch = findViewById(R.id.navPill);
-                if (pillGlitch != null) {
-                    GlitchText.glitchJitter(pillGlitch, GlitchText.MINOR);
-                }
-            }
-            return false; // tidak dikonsumsi: pilihan item tetap normal
-        });
-        bnv.setOnItemSelectedListener(item -> {
-            int id = item.getItemId();
-            // cy8: perubahan active state navbar = ITEM yang kehilangan
-            // active state korupsi singkat + item yang MENDAPATkannya
-            // merekonstruksi - MASING-MASING, bukan seluruh navbar.
-            // (glitchNavItems sudah ada sejak cy7 tapi belum pernah
-            // dipanggil - dead code; kini benar-benar di-wire.)
-            glitchNavItems(bnv, lastNavItemId, id);
-            lastNavItemId = id;
-            if (id == R.id.navHome) {
-                rebuildProxyTable();
-                updateVpnUi();
-                showPage(R.id.pageHome);
-            } else if (id == R.id.navSesi) {
-                rebuildProxyTable();
-                showPage(R.id.pageSesi);
-            } else if (id == R.id.navLog) {
-                showPage(R.id.pageLog);
-            } else if (id == R.id.navSetelan) {
-                showPage(R.id.pageSetting);
-            }
-            return true;
-        });
-        showPage(R.id.pageHome);
-        bnv.setSelectedItemId(R.id.navHome);
-        lastNavItemId = R.id.navHome;
-        // cy8: label item nav di-inflate lazy -> daftarkan ke registry
-        // glitch SETELAH layout pertama (ikut ambient wander; span korupsi
-        // glitchNavItems juga tak lagi bergantung pada pemanggilan awal).
-        bnv.post(() -> GlitchText.registerTree(bnv));
+        // bottom navigation (4 tab) — cy10.4: CyberNavBar (view framework
+        // polos) MENGGANTIKAN BottomNavigationView; akar artifact kotak
+        // hitam (mesin background/elevation tersembunyi lib, lihat
+        // docs/KNOWN_ISSUES.md §4) kini tidak ada lagi by construction.
+        // Kontrak area nav tetap: efek TIDAK PERNAH alpha pada pill;
+        // hanya span label + translationX PER ITEM yang berubah (dipicu
+        // internal oleh CyberNavBar.select()); tekan item = feedback
+        // tepat sasaran pada item itu (pola tombol cy8), bukan jitter
+        // pill penuh.
+        CyberNavBar bnv = findViewById(R.id.navPill);
+        bnv.setMenu(R.menu.bottom_nav);
+        bnv.setOnItemSelectedListener(this::handleNavSelection);
+        // Pilihan awal TANPA efek (sama seperti BNV era cy7: tidak ada
+        // glitch saat cold start), TAPI body handler tetap dijalankan
+        // sekali di sini — BNV lama memicu listener saat seleksi awal
+        // programatik (setSelectedItemId), jadi rebuildProxyTable +
+        // updateVpnUi + showPage tetap terjadi di cold start.
+        // Label sudah terdaftar ke registry glitch di dalam setMenu()
+        // — tidak ada inflasi lazy lagi.
+        bnv.selectInitial(R.id.navHome);
+        handleNavSelection(R.id.navHome);
 
         // log level spinner
         ArrayAdapter<String> ad = new ArrayAdapter<>(this,

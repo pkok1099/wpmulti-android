@@ -909,28 +909,28 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
-    <!-- Navbar pill melayang - cy10.3 COMPACT + TANPA ARTIFACT KOTAK:
-         pengganti FloatingToolbarLayout (lib). PILL = FrameLayout polos
-         + bg_nav_pill.xml (GradientDrawable capsule XML, radius 32dp =
-         setengah tinggi 64dp) + ELEVASI 0: tidak ada lagi
-         MaterialShapeDrawable lib / shadow elevation 6dp pada view
-         translucent / mesin inset lib - tiga lapisan yang dicurigai
-         (dan sudah dua kali bermasalah: cy3 "box abu-abu", cy8
-         "artifact kotak alpha+elevation") kini TIDAK ADA sama sekali,
-         bukan ditutup warna. Konten halaman tetap lewat di belakang
-         pill (translucent 90%) sampai tepi bawah layar.
-         COMPACT: BNV 56dp (dari 64dp) + icon 20dp + label 11sp +
-         itemPadding ramping + padding pill 4/6dp -> tinggi total 64dp
-         (dari 80dp). LEBAR: BNV layout_width 300dp BUKAN wrap_content -
-         BottomNavigationMenuView memberi item lebar minimum
-         0,175 x ruang-ukur (AT_MOST penuh dari layar) sehingga
-         wrap_content membuat pill melebar mengikuti LAYAR, bukan isi
-         (akar "terlalu lebar", makin lebar device makin lebar pill).
-         Dengan spec EXACTLY(300dp): tiap item = max(isi, ~52dp) ->
-         area sentuh >= 48dp, total isi ~210dp, BNV melapor 210dp, pill
-         wrap_content membungkusnya (~222dp) - konstan di semua ukuran
-         layar, terpusat (layout_gravity center_horizontal). -->
-    <FrameLayout
+    <!-- Navbar pill melayang - cy10.4 ROMBAK TOTAL: CyberNavBar (kelas
+         custom, view framework polos) MENGGANTIKAN BottomNavigationView
+         sepenuhnya. AKAR ARTIFACT KOTAK HITAM (terbukti dari forensik
+         piksel screenshot + bytecode material-1.14.0, lihat
+         docs/KNOWN_ISSUES.md §4): kotak hitam persis sebesar bounds BNV;
+         android:background="@null" TIDAK mematikan mesin background lib
+         (constructor NavigationBarView justru memasang MaterialShapeDraw-
+         able baru saat bg == null) dan app:elevation style lib 3dp
+         MENIMPA android:elevation=0dp XML -> jalur compositing layer
+         view ber-elevation bisa membeku jadi kotak hitam opaque.
+         CyberNavBar: TANPA import material / MaterialShapeDrawable /
+         menu presenter / badge / ripple foreground; bentuk pill SATU
+         sumber (bg_nav_pill.xml capsule) + clipToOutline outline capsule;
+         elevation selalu 0; indikator aktif = SATU view terpisah yang
+         bergeser (translationX); glitch hanya per-item yang berubah
+         (API GlitchText beku, tanpa layer/bitmap/alpha container).
+         COMPACT: lebar item = label terlebar + padding 14dp (seragam,
+         pill mengikuti ISI ~250dp, bukan layar); tinggi item dari
+         icon+gap+font+padding (~52dp, label tidak terpotong); area
+         sentuh tiap item >= 48dp; pill ~62dp (dari 64dp). Konten
+         halaman tetap lewat DI BELAKANG pill (translucent 90%). -->
+    <com.wpmulti.test.CyberNavBar
         android:id="@+id/navPill"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -942,23 +942,7 @@
         android:elevation="0dp"
         android:paddingStart="6dp"
         android:paddingEnd="6dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp">
-
-        <com.google.android.material.bottomnavigation.BottomNavigationView
-            style="@style/Widget.Wpmulti.Nav"
-            android:id="@+id/bottomNav"
-            android:layout_width="300dp"
-            android:layout_height="56dp"
-            android:background="@null"
-            android:elevation="0dp"
-            app:itemIconSize="20dp"
-            app:itemPaddingBottom="4dp"
-            app:itemPaddingTop="2dp"
-            app:itemTextAppearanceActive="@style/TextAppearance.Wpmulti.NavLabel"
-            app:itemTextAppearanceInactive="@style/TextAppearance.Wpmulti.NavLabel"
-            app:menu="@menu/bottom_nav"
-            app:labelVisibilityMode="labeled" />
-    </FrameLayout>
+        android:paddingTop="5dp"
+        android:paddingBottom="5dp" />
 
 </FrameLayout>

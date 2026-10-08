@@ -126,23 +126,17 @@
         <item name="contentPadding">16dp</item>
     </style>
 
-    <!-- (Review) warna indikator nav DIBATASI ke BottomNavigationView saja
-         via materialThemeOverlay - dulu diremap global di tema, yang ikut
-         mengubah Switch/CheckBox/Chip di halaman lain. Pada cybercore remap
-         global sudah aktif (nilai identik); overlay dipertahankan agar
-         kontrak "nav selalu neon" eksplisit. -->
-    <style name="ThemeOverlay.Wpmulti.NavPill" parent="">
-        <item name="colorSecondaryContainer">@color/m3_primary_container</item>
-        <item name="colorOnSecondaryContainer">@color/m3_on_primary_container</item>
-    </style>
-    <style name="Widget.Wpmulti.Nav" parent="Widget.Material3.BottomNavigationView">
-        <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
-    </style>
+    <!-- (cy10.4) Widget.Wpmulti.Nav + ThemeOverlay.Wpmulti.NavPill DIHAPUS:
+         dipakai BottomNavigationView yang kini diganti CyberNavBar (view
+         framework polos). Warna item/indikator navbar kini eksplisit di
+         res/color/nav_item_{icon,text}_tint.xml + bg_nav_indicator.xml —
+         nilai identik dengan mapping era overlay (aktif =
+         m3_on_primary_container, nonaktif = m3_on_surface_variant). -->
 
     <!-- cy10.3: label item nav COMPACT - 11sp satu ukuran utk aktif &
          non-aktif (aktif dibedakan indikator pill + warna ikon/teks
-         selector default lib, bukan ukuran teks) -> tinggi item stabil
-         saat pindah tab, tidak ada "lompatan" label. -->
+         selector, bukan ukuran teks) -> tinggi item stabil saat pindah
+         tab, tidak ada "lompatan" label. cy10.4: dipakai CyberNavBar. -->
     <style name="TextAppearance.Wpmulti.NavLabel" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:textSize">11sp</item>
         <item name="android:letterSpacing">0.04</item>

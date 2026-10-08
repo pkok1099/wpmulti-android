@@ -4,6 +4,67 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.4] — 2026-10-08
+
+### Added
+- `CyberNavBar` — kelas navbar pill melayang buatan sendiri (view
+  framework polos: FrameLayout/LinearLayout/ImageView/TextView/View),
+  pengganti TOTAL `BottomNavigationView` material. Bentuk pill dari SATU
+  sumber (`bg_nav_pill.xml` capsule) + `clipToOutline`; elevation selalu
+  0; TANPA hardware layer / bitmap snapshot / alpha pada container.
+- `bg_nav_indicator.xml` — indikator item aktif sebagai SATU view
+  terpisah (capsule 64×32dp, `m3_primary_container`) yang bergeser
+  `translationX` ke item terpilih (ValueAnimator 240ms decelerate;
+  instan saat skala animator sistem = 0 — cache + ContentObserver
+  settings).
+- `res/color/nav_item_icon_tint.xml` + `nav_item_text_tint.xml` —
+  selector warna item (state_selected; nilai identik era BNV via
+  ThemeOverlay).
+- Item navbar dibangun dari `R.menu.bottom_nav` (satu sumber id/ikon/
+  judul; parser XmlPullParser TYPED `AttributeSet` — referensi biner
+  hex `@0x7f...`).
+
+### Changed
+- **Navbar ROMBAK (akar artifact kotak hitam terverifikasi)**:
+  `BottomNavigationView` + `Widget.Wpmulti.Nav` +
+  `ThemeOverlay.Wpmulti.NavPill` DIHAPUS dari layout/tema/kode. Bukti
+  akar (lihat docs/KNOWN_ISSUES.md §4): (1) forensik piksel screenshot
+  — kotak hitam opaque = PERSIS bounds BNV 300×56dp; (2) bytecode
+  material-1.14.0 — `background="@null"` justru membuat lib memasang
+  MaterialShapeDrawable baru (NavigationBarView ctor 148-157), dan
+  `app:elevation` style lib 3dp MENIMPA `android:elevation="0dp"` XML
+  (ctor 171-172) → jalur compositing layer yang membeku jadi kotak
+  hitam pada pipeline Samsung One UI/Android 16 saat pindah tab.
+- Ukuran navbar compact dari isi: lebar item = label terlebar + 2×10dp
+  (pill ±260dp, dari 312dp); tinggi item = ikon 20dp + gap 3dp + tinggi
+  font terukur + padding 7/7dp (label tidak terpotong — dari font,
+  bukan fixed 56dp; pill ±61dp); area sentuh item ≥48dp.
+- Efek glitch navbar kini HANYA pada item yang kehilangan/mendapat
+  active state (item lama MINOR, item baru MEDIUM + jitter — API beku
+  cy7/cy8), dipicu internal `CyberNavBar.select()`; tekan item =
+  feedback tepat sasaran (korupsi label + micro-jitter item, pola
+  tombol cy8) — jitter seluruh pill saat tekan DIHAPUS (spesifikasi
+  baru: efek hanya pada item yang berubah).
+- Gerakan indikator = perubahan STATE (bukan efek): selalu bergerak
+  walau mode glitch Mati / animator sistem 0; snap tanpa animasi pada
+  layout pertama/rotasi.
+- `MainActivity`: `glitchNavItems()`/`lastNavItemId` dihapus (logika
+  pindah ke dalam bar); handler navigasi diekstrak ke
+  `handleNavSelection()` (dipakai listener + sekali di cold start —
+  identik efek samping BNV lama yang memicu listener saat
+  `setSelectedItemId` awal).
+
+### Fixed
+- **Kotak hitam persegi menutupi navbar** (artifact kambuhan lintas
+  cy3/cy8/cy10.3, memotong ikon & label, sudut persegi menonjol di
+  ujung pill): akar = mesin background/elevation tersembunyi
+  BottomNavigationView yang TIDAK bisa dimatikan dari XML. Fix by
+  construction: komponen lib dihapus total dari navbar — tidak ada
+  lagi view/mesin di area navbar yang bisa menghasilkan kotak atau
+  layer (dokumentasi pencegahan permanen di KNOWN_ISSUES §4).
+- Label navbar terpotong di bawah: tinggi item kini dihitung dari
+  metrik font + padding (bukan fixed 56dp BNV).
+
 ## [cy10.3] — 2026-10-08
 
 ### Added

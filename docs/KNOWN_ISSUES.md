@@ -38,30 +38,78 @@ drawable di x=0 view dan MENGABAIKAN padding; teks mulai di
 22dp). Box +2dp dari tepi dialog, teks ikut +2dp, gap box→teks tetap.
 **Commit**: 1a243c2.
 
-### 4. Artifact kotak di tepi kiri/kanan pill nav (cy3 → cy8 → cy10.3)
-**Gejala**: bentuk persegi menonjol di ujung kiri/kanan pill; muncul
-terutama terlihat di screenshot, dipicu/diperparah perpindahan tab.
-**Riwayat**: cy3 memperbaiki "box abu-abu di atas pill" (HUD); cy8
-memperbaiki alpha-pada-view-ber-elevation (shadow offscreen layer
-ter-clip bounds persegi) — tapi artifact ujung pill masih muncul.
-**Akar (analisis AAR material-1.14.0, bytecode)**: tiga lapisan mesin
-bekerja di pill lama:
-1. `FloatingToolbarLayout` membuat `MaterialShapeDrawable` capsule +
-   **elevation 6dp** pada view **90% translucent** — kombinasi
-   shadow/outline/layer paling rapuh di render pipeline;
-2. `BottomNavigationView` membawa background `MaterialShapeDrawable`
-   **persegi** sendiri (dari style lib) yang hanya di-TINT transparan —
-   drawable persegi ukuran penuh tetap hidup di atas ujung capsule;
-3. mesin inset/margin lib (`updateMargins`) yang anyway di-nonaktifkan
-   listener rootMain (CONSUMED).
-**Fix (cy10.3)**: struktur diganti total — BUKAN ditutup warna:
-`navPill` = FrameLayout polos + `bg_nav_pill.xml` (GradientDrawable
-capsule XML, radius 32dp = ½ tinggi 64dp) + **elevation 0** (tanpa
-shadow framework); BNV `android:background="@null"` (tidak ada drawable
-persegi sama sekali). Mesin yang menghasilkan kotak tidak ada lagi, maka
-tidak bisa muncul lagi setelah pindah tab berulang (efek pada area nav
-memang tidak pernah menyentuh background/alpha pill — hanya
-`glitchJitter` translationX + span label per item).
+### 4. Artifact kotak hitam di area navbar (cy3 → cy8 → cy10.3 → cy10.4
+###    ROMBAK TOTAL — akar terverifikasi forensik piksel + bytecode)
+**Gejala**: kotak hitam persegi (solid, sudut 90°) menutupi bagian navbar
+dari tengah ikon sampai bawah label; screenshot sebelumnya juga menampilkan
+sudut persegi menonjol di kiri-kanan ujung pill; label tampak terpotong.
+Muncul/diperparah perpindahan tab berulang; bertahan setelah fix cy3 (HUD),
+cy8 (alpha+elevation), cy10.3 (ganti FloatingToolbarLayout→FrameLayout +
+`background="@null"` + `elevation="0dp"` pada BNV).
+
+**Investigasi (cy10.4)**:
+1. **Forensik piksel screenshot** (Samsung A15, 400dpi, resize SmartSelect
+   0.84): kotak hitam murni (<8/255) dengan tepi 1px tajam terpetakan ke
+   **PERSIS bounds BottomNavigationView** — 300×56dp, offset 4dp dari atas
+   & bawah pill (padding pill), x = pill+6dp … pill+306dp. Ikon + label
+   (konten BNV) digambar UTUH DI ATAS kotak; fill capsule pill hanya
+   terlihat DI LUAR rentang x BNV. Kesimpulan: view BNV sendiri yang
+   terkomposit menjadi kotak hitam opaque.
+2. **Bytecode material-1.14.0** (decompile CFR): TIGA fakta berantai:
+   - `NavigationBarView` ctor baris 148-157: saat `android:background`
+     == `@null`, lib justru **membuat & memasang MaterialShapeDrawable
+     baru** sebagai background — `@null` TIDAK mematikan mesin background,
+     hanya mengganti mesin mana yang menggambar.
+   - ctor baris 171-172: `attributes.hasValue(app:elevation)` TERISI dari
+     style chain (`Base.Widget.Material3.BottomNavigationView` →
+     `elevation = m3_sys_elevation_level2 = 3dp`) → `setElevation(3dp)`
+     dipanggil SETELAH constructor View memproses XML → **menimpa
+     `android:elevation="0dp"` di layout kita**. BNV sebenarnya ber-elevation
+     3dp selama ini.
+   - `setElevation()` dan `onAttachedToWindow()` meneruskan elevasi ke MSD
+     via `MaterialShapeUtils.setElevation/setParentAbsoluteElevation` →
+     MSD tanpa fill tapi dengan shapeAppearance + elevation-overlay aktif
+     masuk jalur **RenderNode/shadow/compositing-layer** framework.
+3. **Mekanisme**: view ber-elevation + background shape-drawable + invalidasi
+   berulang (pindah tab: menu presenter rebind) = jalur compositing layer
+   yang pada pipeline Samsung One UI/Android 16 dapat membeku jadi KOTAK
+   HITAM OPAQUE seukuran view — keluarga bug yang sama dengan cy8 "alpha
+   pada view ber-elevation → layer ter-clip persegi" (beda manifestasi OEM).
+   Ini menjelaskan juga gejala lama: kotak lebih lebar dari lengkungan
+   capsule → sudut persegi menonjol di ujung pill (bounds BNV 300dp vs
+   pill 312dp melengkung).
+
+**Fix (cy10.4) — by construction, bukan ditutup warna**: BNV DIHAPUS TOTAL,
+diganti **`CyberNavBar`** (kelas custom, ±415 baris): semua view framework
+polos (FrameLayout/LinearLayout/ImageView/TextView/View) — nol import
+material, nol MaterialShapeDrawable, nol menu presenter/badge/ripple
+foreground/lazy inflater. Bentuk pill SATU sumber (`bg_nav_pill.xml`
+capsule) + `clipToOutline` (outline capsule sendiri — konten terpotong
+mengikuti lengkungan pill, sudut persegi mustahil menonjol). Elevation
+selalu 0, tanpa hardware layer, tanpa bitmap. Indikator aktif = SATU view
+terpisah (`bg_nav_indicator.xml` capsule 64×32dp) yang bergeser via
+translationX (ValueAnimator 240ms; instan saat skala animator sistem 0 —
+cache + ContentObserver settings). Item dibangun dari `R.menu.bottom_nav`
+(parser XmlPullParser TYPED `AttributeSet.getAttributeResourceValue` —
+referensi biner hex `@0x7f...`; id tidak berubah). Efek glitch hanya pada
+item yang berubah (lama MINOR, baru MEDIUM + jitter — API beku cy7/cy8).
+Ukuran: lebar item = label terlebar + 2×10dp (pill ~260dp, dari 312dp);
+tinggi item = icon 20dp + gap 3dp + font terukur + padding 7/7 (~51dp;
+label tidak terpotong — dihitung dari font, bukan fixed 56dp); area sentuh
+≥48dp; pill ~61dp tinggi.
+
+**Pencegahan (aturan permanen)**:
+- JANGAN pernah memasang komponen navigasi Material (BNV/NavigationRail/
+  FloatingToolbar) di dalam pill melayang — mesin background/elevation
+  tersembunyinya tidak bisa dimatikan dari XML (`@null` + `elevation=0`
+  DUA KALI terbukti tidak cukup).
+- `android:background="@null"` pada widget lib ≠ tanpa background — selalu
+  cek constructor widget di bytecode/AOSP apakah ada fallback drawable.
+- Elevation style lib menimpa XML lewat `app:elevation` — verifikasi dengan
+  `View.getElevation()` runtime, jangan percaya XML saja.
+- Area navbar: TANPA elevation, TANPA layerType, TANPA bitmap snapshot,
+  TANPA alpha pada container (kontrak cy8 + cy10.4).
+**Commit**: cy10.4.
 
 ### 5. Tombol mode IP per aplikasi: "harus menekan 5x, yang berubah hanya
 warna" (cy10.3)
@@ -101,23 +149,25 @@ tertanda aktif), chip 48dp (area sentuh), legenda di bawah search bar.
 | K6 | `detail.setText` chip sesi tetap dijalankan walau GONE | Skip saat GONE = teks basi sampai tick berikut saat expand | Hemat churn kecil; risiko fitur expand |
 | K7 | Idle TICK tetap mem-post 1 runnable/950–1500ms saat foreground idle | TICK = penggerak ambient itu sendiri; RESTORE tak-bersyarat memotong umur span yang beririsan — timing harus identik | (Sudah dianalisis cy10.2 dan sengaja dibatalkan) |
 
-## C. Perlu test manual di device (checklist cy10.3)
+## C. Perlu test manual di device (checklist cy10.4 — navbar baru)
 
-1. **Mode IP per aplikasi**: buka dialog → tap chip → popup 3 mode →
-   pilih tiap mode → label chip BERUBAH seketika + warna sesuai; pilih
-   ulang mode sama = popup tutup tanpa perubahan; tap luar/back = tutup;
-   tutup dialog saat popup terbuka = popup ikut tertutup; glitch hanya
-   pada chip yang berubah.
-2. **Search sticky**: scroll list di kedua dialog → search (dan legenda
-   di dialog Mode IP) tetap terlihat; ketik → keyboard muncul, list
-   menyusut (ADJUST_RESIZE), search tidak tertutup keyboard; tanpa
-   layout shift.
-3. **Navbar**: pill compact (±222dp, 64dp tinggi) terpusat; tekan tiap
-   item (area ≥48dp); pindah tab BERULANG kali → tidak ada kotak/persegi
-   di ujung kiri/kanan pill; pill aktif tetap bertema; label tidak
-   "melompat" saat pindah tab.
-4. **Checkbox**: posisi centang tidak berubah dari cy10.2 (box +2dp dari
-   tepi dialog, gap box→teks tetap).
-5. **Mode efek**: Auto / Selalu aktif / Mati — semua jalur di atas tetap
-   benar; Mati = tanpa efek, state tetap berubah.
-6. **logView**: halaman Log tetap 100% bersih dari glitch.
+Checklist cy10.3 no.1/2/4/5/6 (mode IP, search sticky, checkbox, mode efek,
+logView) masih berlaku. Checklist navbar DIGANTI:
+
+3. **Navbar CyberNavBar (cy10.4)** — uji BERULANG dan bergantian:
+   - pindah tab CEPAT berulang (10-20x bolak-balik, juga acak) → TIDAK ADA
+     kotak hitam, sudut persegi di ujung kiri/kanan pill, ghost shadow, atau
+     sisa alpha/transform; ikon/label tetap utuh & terbaca;
+   - pill compact terpusat (~260dp lebar, ~61dp tinggi), indikator cyan
+     64×32dp berpindah mulus ke item aktif (instan bila skala animator
+     sistem = 0);
+   - label TIDAK terpotong bawah (tinggi dihitung dari font); area sentuh
+     tiap item ≥48dp (tap di tepi item tetap jalan);
+   - buka/tutup keyboard (search dialog), rotasi layar, background lalu
+     kembali, dialog buka/tutup di atas navbar → tetap benar;
+   - mode glitch Auto / Selalu aktif / Mati: pindah tab tetap jalan di
+     semua mode; Mati = tanpa efek korupsi tapi indikator tetap berpindah;
+   - tekan item = kilat korupsi label item itu + micro-jitter item
+     (bukan seluruh pill); tap item yang sudah aktif = no-op;
+   - glitch saat pindah tab hanya pada 2 item yang berubah (lama korupsi
+     singkat, baru rekonstruksi) — bukan seluruh navbar.

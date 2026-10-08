@@ -1,7 +1,7 @@
 # ARCHITECTURE — wpmulti-android
 
 Peta arsitektur proyek untuk melanjutkan pekerjaan tanpa membaca seluruh
-riwayat commit. Terakhir diperbarui: **cy10.3** (2026-10-08).
+riwayat commit. Terakhir diperbarui: **cy10.4** (2026-10-08).
 
 ## 1. Struktur proyek
 
@@ -21,22 +21,32 @@ app/src/main/java/com/wpmulti/test/
 ├── GlitchText.java        — MESIN GLITCH (lihat §4). Satu-satunya
 │                            sumber API efek visual teks/view.
 ├── GlitchDropdown.java    — Popup dropdown pengganti popup Spinner.
+├── CyberNavBar.java       — Navbar pill melayang pengganti BottomNavigation-
+│                            View (cy10.4; view framework polos — lihat
+│                            KNOWN_ISSUES §4 utk akar artifact kotak hitam).
 └── SelfAnim.java          — Penggerak animasi custom (Choreographer
                              sendiri) — tetap jalan walau skala animator
                              sistem = 0.
 app/src/main/res/
 ├── layout/activity_main.xml — rootMain FrameLayout: 4 halaman (page*),
-│                             hudToast, navPill (FrameLayout capsule).
+│                             hudToast, navPill (CyberNavBar capsule).
 ├── layout/row_*.xml       — row config / proxy / sesi.
 ├── layout/spinner_item.xml + spinner_dropdown_item.xml — item Spinner.
 ├── drawable/              — bg_dialog, bg_dropdown, bg_nav_pill,
+│                             bg_nav_indicator (indikator aktif nav),
 │                             bg_search_terminal, bg_chip_mode_{global,
 │                             v4,v6}, cb_cyber, cursor_cyber,
 │                             divider_scanline, scrollbar_cyber, ikon.
+├── color/                 — nav_item_icon_tint / nav_item_text_tint
+│                             (selector state_selected item navbar).
+├── menu/bottom_nav.xml    — SATU sumber id/ikon/judul item navbar
+│                             (dibaca CyberNavBar.setMenu via parser
+│                             XmlPullParser TYPED; id tidak pernah berubah).
 ├── values/themes.xml      — SEMUA style: Theme.WpmultiTest (M3E dark),
 │                             Theme.WpmultiTest.Dialog (SATU tema semua
 │                             dialog), Widget.Wpmulti.* (Card/TextField/
-│                             Nav/ModeChip/CheckBox/EditText.Terminal).
+│                             ModeChip/CheckBox/EditText.Terminal),
+│                             TextAppearance.Wpmulti.NavLabel (label nav).
 ├── values/colors.xml      — palet cybercore (satu sumber, dark-only).
 ├── values/dimens.xml      — token sudut 4/6/8dp, nav_pill_clearance.
 └── values/strings.xml     — label mode IP (chip/popup/legenda).
@@ -65,15 +75,22 @@ rootMain (FrameLayout, edge-to-edge, inset via listener)
 ├── pageHome / pageSesi / pageLog / pageSetting (GONE/VISIBLE;
 │   pergantian = showPage() → GlitchText.pageTransition 7 fase)
 ├── hudToast   — notifikasi in-app (pengganti Toast), glitchAppear/Disappear
-└── navPill    — FrameLayout capsule (bg_nav_pill.xml, elevation 0,
-                 translucent 90%) berisi BottomNavigationView 4 tab
-                 (56dp, label 11sp, lebar item ~52dp → pill ±222dp,
-                 terpusat bawah). Konten lewat DI BELAKANG pill.
+└── navPill    — CyberNavBar (cy10.4): pill capsule SATU sumber
+                 (bg_nav_pill.xml) + clipToOutline, elevation 0, view
+                 framework polos TANPA mesin lib (akar artifact kotak
+                 hitam — KNOWN_ISSUES §4). Isi: LinearLayout 4 item
+                 (ikon 20dp + label 11sp, sentuh ≥48dp) + SATU view
+                 indikator aktif (bg_nav_indicator.xml 64×32dp) yang
+                 bergeser translationX ke item terpilih. Lebar mengikuti
+                 isi (~260dp), terpusat bawah. Konten lewat DI BELAKANG
+                 pill.
 ```
 
-Pindah tab = `BottomNavigationView.setOnItemSelectedListener` →
-`glitchNavItems()` (item lama MINOR, item baru MEDIUM — per item) →
-`showPage()`.
+Pindah tab = klik item `CyberNavBar` → internal `select()`: efek glitch
+HANYA pada item yang berubah (lama MINOR, baru MEDIUM + jitter, API beku
+cy7/cy8) + indikator bergeser (state, bukan efek) → listener →
+`handleNavSelection()` → `showPage()` → `GlitchText.pageTransition`
+7 fase.
 
 ## 4. Sistem glitch (GlitchText)
 
@@ -144,14 +161,20 @@ SelfAnim). **Baca saat event terjadi, bukan di-cache.**
   values-night dihapus). Parent: `Theme.Material3Expressive.Dark.
   NoActionBar`.
 - Sudut tegas 4/6/8dp via `Shape.Wpmulti.*` + token `shapeCornerSize*`.
-- `Widget.Wpmulti.*`: Card, TextField, Nav (+ `ThemeOverlay.NavPill`
-  scope warna indikator ke BNV saja), ModeChip (48dp), CheckBox, EditText
+- `Widget.Wpmulti.*`: Card, TextField, ModeChip (48dp), CheckBox, EditText
   Terminal, Snackbar.
-- **Navbar pill (cy10.3)**: FrameLayout + `bg_nav_pill.xml` (capsule XML,
-  radius 32dp = ½ tinggi 64dp) + elevation 0 — TANPA MaterialShapeDrawable
-  lib / shadow (akar artifact kotak, lihat KNOWN_ISSUES). BNV:
-  `background=@null`, 56dp, `layout_width=300dp` (mengunci lebar item
-  ~52dp agar pill mengikuti ISI, bukan lebar layar).
+- **Navbar (cy10.4)**: `CyberNavBar` — BUKAN komponen lib. Pill capsule
+  dari SATU sumber (`bg_nav_pill.xml`) + `clipToOutline` (outline capsule
+  sendiri); elevation 0; indikator aktif = view terpisah
+  (`bg_nav_indicator.xml`, 64×32dp, `m3_primary_container`); warna item via
+  selector `res/color/nav_item_{icon,text}_tint.xml` (aktif
+  `m3_on_primary_container`, nonaktif `m3_on_surface_variant` — identik
+  era BNV); label `TextAppearance.Wpmulti.NavLabel` 11sp.
+  `Widget.Wpmulti.Nav` + `ThemeOverlay.Wpmulti.NavPill` DIHAPUS.
+  Larangan permanen (akar artifact kotak hitam, lihat KNOWN_ISSUES §4):
+  komponen navigasi Material TIDAK PERNAH dipakai di dalam pill —
+  `background="@null"`/`elevation="0dp"` di XML terbukti TIDAK mematikan
+  mesin background/elevation tersembunyinya.
 
 ## 6. Dialog
 
