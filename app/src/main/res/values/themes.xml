@@ -127,6 +127,22 @@
         <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
     </style>
 
+    <!-- Glitch window/popup animation (cy7): dialog & dropdown MUNCUL dan
+         HILANG karena glitch - flicker alpha multi-langkah + micro scale
+         (bukan fade/slide platform). Dipasang via
+         Window.setWindowAnimations / PopupWindow.setAnimationStyle HANYA
+         saat animScale > 0 (aksesibilitas: animasi 0 = tanpa efek).
+         Keuntungan window-level: seluruh panel dialog/popup yang berubah
+         dianimasikan, background aplikasi TIDAK tersentuh. -->
+    <style name="GlitchWindowAnim">
+        <item name="android:windowEnterAnimation">@anim/glitch_materialize</item>
+        <item name="android:windowExitAnimation">@anim/glitch_disintegrate</item>
+    </style>
+    <style name="GlitchPopupWindow">
+        <item name="android:windowEnterAnimation">@anim/glitch_materialize</item>
+        <item name="android:windowExitAnimation">@anim/glitch_disintegrate</item>
+    </style>
+
     <!-- Snackbar cyber (defensif cy3): container near-black biru + teks
          monospace cyan muda. Tidak dipakai kode saat ini (notif lewat HUD
          in-app), tapi style disiapkan agar tak pernah muncul box terang

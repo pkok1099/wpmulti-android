@@ -61,6 +61,11 @@
     <color name="glitch_shadow_thin">#33FF3355</color>
     <color name="glitch_block">#33D4FF3F</color>
 
+    <!-- GlitchDropdown (cy7): latar popup dropdown - near-black biru lebih
+         pekat dari nav_pill_container agar item terbaca di atas konten
+         scroll; stroke neon dari m3_primary ada di bg_dropdown.xml. -->
+    <color name="glitch_dropdown_bg">#F0111D2B</color>
+
     <!-- Sweep abu-abu netral M3 (cy3): keluarga surfaceContainer yang
          tidak ikut remap cy1 masih memakai default lib (neutral gray
          #1D1B20 dst) - terlihat sbg "box abu-abu" di komponen lib

@@ -91,11 +91,9 @@ public class MainActivity extends AppCompatActivity {
     // Glitchcore cy3: HUD notifikasi in-app (pengganti Toast sistem yang
     // tampil sbg box abu-abu gelap di atas pill nav).
     private TextView hudToast;
-    private final Runnable hudHide = () -> {
-        if (hudToast != null) {
-            hudToast.setVisibility(android.view.View.GONE);
-        }
-    };
+    // cy7: guard generasi hide HUD - HUD yang muncul lagi sebelum hide
+    // selesai tidak ikut GONE (race glitchDisappear vs re-show).
+    private int hudGen = 0;
     private TextView logView;
     private TextView totalView;
     private TextView verifyView;
@@ -463,19 +461,32 @@ public class MainActivity extends AppCompatActivity {
 
     // ---------- Pages ----------
     private int currentPage = R.id.pageHome;
-    // Fase 2: transisi halaman fade+slide. View yang sedang dianimasikan
-    // disimpan agar transisi berikutnya membatalkan yang lama (anti-race).
-    private View pageAnimView;
+    // cy7: showPage pertama (onCreate) tanpa transisi; flag anti-transisi
+    // palsu saat XML masih semua VISIBLE.
+    private boolean pageShownOnce = false;
 
     // Skala animator global (Setelan developer > skala animasi; 0 =
     // "hapus animasi"): 0 -> animasi UI dilewati, langsung state final.
     // Fallback 1f bila key tidak tersedia.
     private float animScale() {
+        // cy7: skala EFEKTIF = minimum dari TIGA skala animasi sistem -
+        // "Remove animations" (aksesibilitas) menset semuanya 0; window/
+        // popup animation (dialog/dropdown) diatur WINDOW/TRANSITION
+        // scale, bukan ANIMATOR - jadi ketiganya wajib dicek.
         try {
-            return android.provider.Settings.Global.getFloat(
+            float s = android.provider.Settings.Global.getFloat(
                     getContentResolver(),
                     android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
                     1f);
+            float t = android.provider.Settings.Global.getFloat(
+                    getContentResolver(),
+                    android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE,
+                    1f);
+            float w = android.provider.Settings.Global.getFloat(
+                    getContentResolver(),
+                    android.provider.Settings.Global.WINDOW_ANIMATION_SCALE,
+                    1f);
+            return Math.min(s, Math.min(t, w));
         } catch (Exception e) {
             return 1f;
         }
@@ -483,36 +494,73 @@ public class MainActivity extends AppCompatActivity {
 
     // Overhaul UI 1/7: navigasi by-ID halaman (pageHome/pageSesi/pageLog/
     // pageSetting) — pengganti showPage(int idx) era navigasi drawer.
-    // Fase 2: halaman yang tampil diberi transisi fade+slide ringan
-    // (dilewati bila animator scale 0; transisi sebelumnya dibatalkan
-    // dulu agar tidak bertumpuk).
+    // cy7: page transition "A terkorosi -> B direkonstruksi" per-fragment
+    // (GlitchText.pageTransition) - BUKAN slide/fade, BUKAN shake. Bila
+    // animator scale 0: langsung final tanpa efek (aksesibilitas).
     private void showPage(int pageId) {
         currentPage = pageId;
         int[] pages = {R.id.pageHome, R.id.pageSesi, R.id.pageLog,
                 R.id.pageSetting};
-        View shown = null;
+        View oldShown = null, shown = null;
+        if (pageShownOnce) {
+            for (int id : pages) {
+                View v = findViewById(id);
+                if (v.getVisibility() == View.VISIBLE && id != pageId)
+                    oldShown = v;
+            }
+        }
+        pageShownOnce = true;
         for (int id : pages) {
             View v = findViewById(id);
-            v.setVisibility(id == pageId ? View.VISIBLE : View.GONE);
-            if (id == pageId) shown = v;
+            if (id == pageId) {
+                v.setVisibility(View.VISIBLE);
+                shown = v;
+            } else if (v != oldShown) {
+                // cy7: halaman yang tidak terlibat transisi langsung GONE;
+                // oldShown TETAP VISIBLE sampai pageTransition menyembunyikannya
+                // setelah fase korupsi (atau langsung GONE bila fx mati) -
+                // anti-race fast-switch: setiap showPage menyembunyikan
+                // halaman basi yang tidak sedang dianimasikan.
+                v.setVisibility(View.GONE);
+            }
         }
-        // cy6: pindah halaman = glitch MAJOR (halaman "reconstruct karena
-        // glitch") + pill nav ikut tergemetrek MINOR sebagai feedback tap.
-        if (shown != null) GlitchText.glitchMajor(shown);
-        View navPillGlitch = findViewById(R.id.navPill);
-        if (navPillGlitch != null) {
-            GlitchText.glitchJitter(navPillGlitch, GlitchText.MINOR);
-        }
-        if (pageAnimView != null) pageAnimView.animate().cancel();
-        if (shown != null && animScale() > 0f) {
-            pageAnimView = shown;
-            float d = getResources().getDisplayMetrics().density;
-            shown.setAlpha(0f);
-            shown.setTranslationY(16 * d);
-            shown.animate().alpha(1f).translationY(0f).setDuration(220)
-                    .start();
-        }
+        GlitchText.pageTransition(oldShown, shown);
         if (pageId == R.id.pageLog) renderLog(); // flush log yang tertunda saat masuk halaman Log
+    }
+
+    // cy7: id item nav terakhir aktif - untuk glitch PER-ITEM navbar.
+    private int lastNavItemId = -1;
+
+    /**
+     * cy7: perubahan active state navbar = glitch pada ITEM yang berubah,
+     * masing-masing (item lama korupsi MINOR, item baru rekonstruksi
+     * MEDIUM). Pill background TIDAK disentuh - tanpa alpha flicker pada
+     * view ber-elevation (artifact kotak = layer clipping shadow, lihat
+     * docs GlitchText.glitchView).
+     */
+    private void glitchNavItems(BottomNavigationView bnv,
+            int oldId, int newId) {
+        if (oldId == -1 || oldId == newId) return;
+        if (!(bnv.getChildAt(0) instanceof android.view.ViewGroup)) return;
+        android.view.ViewGroup menuView =
+                (android.view.ViewGroup) bnv.getChildAt(0);
+        android.view.Menu m = bnv.getMenu();
+        int oi = -1, ni = -1;
+        for (int i = 0; i < m.size(); i++) {
+            int iid = m.getItem(i).getItemId();
+            if (iid == oldId) oi = i;
+            if (iid == newId) ni = i;
+        }
+        if (oi >= 0 && oi < menuView.getChildCount()) {
+            View it = menuView.getChildAt(oi);
+            GlitchText.glitchTree(it, GlitchText.MINOR);
+            GlitchText.glitchJitter(it, GlitchText.MINOR);
+        }
+        if (ni >= 0 && ni < menuView.getChildCount()) {
+            View it = menuView.getChildAt(ni);
+            GlitchText.glitchTree(it, GlitchText.MEDIUM);
+            GlitchText.glitchJitter(it, GlitchText.MINOR);
+        }
     }
 
     // ---------- VPN ----------
@@ -825,10 +873,9 @@ public class MainActivity extends AppCompatActivity {
                     if (next.isEmpty()) vp.edit().remove(key).apply();
                     else vp.edit().putString(key, next).apply();
                     btn.setText(appIpModeLabel(next));
-                    // cy6: mode per IP berubah = glitch MEDIUM pada baris
-                    // (label tombol ikut glitchNow - teks berganti mode).
+                    // cy7: mode per app berubah = HANYA tombol mode itu
+                    // (label row tidak berubah -> tidak ikut glitch).
                     GlitchText.glitchNow(btn, GlitchText.MEDIUM);
-                    GlitchText.glitchTree(row, GlitchText.MEDIUM);
                     updateVpnIpModeCount();
                 });
                 return row;
@@ -847,7 +894,13 @@ public class MainActivity extends AppCompatActivity {
                 ? dlg.getWindow().getDecorView() : lv;
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
-        GlitchText.glitchAppear(lv);
+        // cy7: dialog MUNCUL karena glitch di level WINDOW (flicker
+        // materialize - background aplikasi tidak tersentuh) + burst teks
+        // sekali. Window animation di-guard animScale (0 = tanpa animasi).
+        if (animScale() > 0f && dlg.getWindow() != null) {
+            dlg.getWindow().setWindowAnimations(R.style.GlitchWindowAnim);
+        }
+        GlitchText.glitchTree(lv, GlitchText.MEDIUM);
     }
 
 
@@ -913,7 +966,12 @@ public class MainActivity extends AppCompatActivity {
                 ? dlg.getWindow().getDecorView() : lv;
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
-        GlitchText.glitchAppear(lv);
+        // cy7: sama dgn dialog Mode IP - materialize level WINDOW + burst
+        // teks sekali; dismiss memakai windowExitAnimation disintegrate.
+        if (animScale() > 0f && dlg.getWindow() != null) {
+            dlg.getWindow().setWindowAnimations(R.style.GlitchWindowAnim);
+        }
+        GlitchText.glitchTree(lv, GlitchText.MEDIUM);
     }
 
 
@@ -927,13 +985,27 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         ui.post(() -> {
-            hudToast.removeCallbacks(hudHide);
+            hudGen++;
+            final int gen = hudGen;
             hudToast.setText("> " + msg);
             hudToast.setVisibility(android.view.View.VISIBLE);
-            // cy6: HUD muncul KARENA GLITCH (materialize), bukan fade.
+            // cy7: HUD muncul KARENA GLITCH (materialize), bukan fade.
             GlitchText.glitchAppear(hudToast);
-            hudToast.postDelayed(hudHide, 2400);
+            ui.postDelayed(() -> hideHud(gen), 2400);
         });
+    }
+
+    // cy7: HUD hilang KARENA GLITCH (disintegrate) dengan guard generasi;
+    // setelah GONE alpha dipastikan 1f (tidak ada state tertinggal).
+    private void hideHud(final int gen) {
+        if (gen != hudGen) return;
+        GlitchText.glitchDisappear(hudToast);
+        ui.postDelayed(() -> {
+            if (gen == hudGen) {
+                hudToast.setVisibility(android.view.View.GONE);
+                hudToast.setAlpha(1f);
+            }
+        }, 110);
     }
 
     // Glitchcore cy3: kilat 4 langkah putih -> merah -> cyan -> putih
@@ -1117,8 +1189,11 @@ public class MainActivity extends AppCompatActivity {
                 Profile rm = profiles.remove(idx);
                 if (rm.file.exists()) rm.file.delete();
                 lastAddedProfileIdx = -1; // hapus -> rekonstruksi container
-                rebuildConfigRows();
-                updateTotal();
+                // cy7: row yang dihapus DISINTEGRATE dulu (korupsi ->
+                // fragment -> hilang), baru list direkonstruksi 120ms
+                // kemudian - bukan hilang seketika.
+                GlitchText.glitchDisappear(row);
+                ui.postDelayed(() -> rebuildConfigRows(), 120);
                 log("profile dihapus: " + rm.name);
             });
             configContainer.addView(row);
@@ -1129,12 +1204,10 @@ public class MainActivity extends AppCompatActivity {
         }
         updateTotal();
         updateAddBtn();
-        // cy6: seluruh list yang direkonstruksi (hapus/onCreate-after-start)
-        // terasa "rebuild karena glitch" (MAJOR); penambahan row cukup
-        // MINOR di container (row barunya sudah MAJOR-style appear).
-        if (lastAddedProfileIdx >= 0) {
-            GlitchText.glitchView(configContainer, GlitchText.MINOR);
-        } else {
+        // cy7: tambah row = HANYA row baru yang glitch (glitchAppear di
+        // atas); hapus/onCreate = rekonstruksi container MAJOR. TIDAK ada
+        // lagi flicker container utk penambahan (noise tidak perlu).
+        if (lastAddedProfileIdx < 0) {
             GlitchText.glitchMajor(configContainer);
         }
         lastAddedProfileIdx = -1;
@@ -1516,19 +1589,20 @@ public class MainActivity extends AppCompatActivity {
         // buang chip sesi yang sudah tidak ada di snapshot terbaru
         java.util.Iterator<java.util.Map.Entry<Integer, View>> it =
                 chipViews.entrySet().iterator();
-        boolean anyChipGone = false;
         while (it.hasNext()) {
             java.util.Map.Entry<Integer, View> e = it.next();
             if (!seen.contains(e.getKey())) {
-                monSesiDetail.removeView(e.getValue());
+                // cy7: chip yang hilang DISINTEGRATE sendiri (bukan
+                // container ikut flicker), lalu dilepas dari layout.
+                View goneChip = e.getValue();
+                GlitchText.glitchDisappear(goneChip);
+                monSesiDetail.postDelayed(() ->
+                        monSesiDetail.removeView(goneChip), 110);
                 it.remove();
                 prevSessAct.remove(e.getKey());
                 expandedSess.remove(e.getKey());
-                anyChipGone = true;
             }
         }
-        // cy6: chip yang hilang = container ikut "terganggu" sekali (MINOR)
-        if (anyChipGone) GlitchText.glitchView(monSesiDetail, GlitchText.MINOR);
     }
 
     // ---------- Start/Stop ----------
@@ -1982,8 +2056,9 @@ public class MainActivity extends AppCompatActivity {
         this.vpnAutoReconnect = vpnAutoReconnect;
         vpnAutoReconnect.setChecked(vprefs.getBoolean("auto_reconnect", true));
         vpnAutoReconnect.setOnCheckedChangeListener((b, checked) -> {
-                // cy6: setting berubah = glitch MEDIUM pada section-nya.
-                GlitchText.glitchTree((View) b.getParent(), GlitchText.MEDIUM);
+                // cy7: checkbox berubah = HANYA checkbox itu (bukan row/
+                // section) - feedback tepat sasaran.
+                GlitchText.glitchNow((TextView) b, GlitchText.MINOR);
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putBoolean("auto_reconnect", checked).apply();
         });
@@ -2008,9 +2083,10 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "allow" : ps == 2 ? "deny" : "all";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_app_mode", mk).apply();
-                // Task 33: split tunnel pindah mode = glitch di section
-                GlitchText.glitchTree((View) pa.getParent());
-                GlitchText.glitchNow(vpnAppCount);
+                // cy7: pindah mode split tunnel = spinner + counter itu
+                // SAJA (bukan section/card, bukan seluruh halaman).
+                GlitchText.glitchView(vpnAppMode, GlitchText.MINOR);
+                GlitchText.glitchNow(vpnAppCount, GlitchText.MINOR);
                 updateVpnAppCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
@@ -2037,9 +2113,9 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "v6only" : ps == 2 ? "v4only" : "dual";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_ip_mode", mk).apply();
-                // Task 33: mode per IP pindah = glitch di section + counter
-                GlitchText.glitchTree((View) pa.getParent());
-                GlitchText.glitchNow(vpnIpModeAppCount);
+                // cy7: mode per IP global pindah = spinner + counter saja.
+                GlitchText.glitchView(vpnIpMode, GlitchText.MINOR);
+                GlitchText.glitchNow(vpnIpModeAppCount, GlitchText.MINOR);
                 updateVpnIpModeCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
@@ -2061,8 +2137,9 @@ public class MainActivity extends AppCompatActivity {
                 new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p,
                                        android.view.View v, int ps, long id) {
-                // Task 33: dropdown DNS diganti = glitch di section
-                GlitchText.glitchTree((View) p.getParent());
+                // cy7: dropdown DNS diganti = spinner itu saja; hint field
+                // berubah di updateDnsHint (teks berubah = watcher sendiri).
+                GlitchText.glitchView(vpnDnsMode, GlitchText.MINOR);
                 updateDnsHint();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
@@ -2123,7 +2200,7 @@ public class MainActivity extends AppCompatActivity {
         logLevel.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
                 logLevelSel = (String) p.getItemAtPosition(pos);
-                GlitchText.glitchTree((View) p.getParent()); // Task 33
+                GlitchText.glitchView(logLevel, GlitchText.MINOR); // cy7: spinner saja
                 renderLog();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
