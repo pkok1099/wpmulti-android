@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fase 3: chip satu sesi (di-inflate ke monSesiDetail, halaman
+     Beranda). Dot warna status ditint dari Java (aktif hijau / idle
+     abu / error merah); judul mono ringkas; detail lengkap tampil saat
+     chip disentuh (persist di expandedSess, update in-place). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/bg_chip"
+    android:foreground="?attr/selectableItemBackground"
+    android:paddingStart="10dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="6dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <View android:id="@+id/chipDot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/ic_dot_gray" />
+
+        <TextView android:id="@+id/chipTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:textSize="12sp"
+            android:typeface="monospace"
+            android:textColor="?attr/colorOnSurface" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/chipDetail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textSize="11sp"
+        android:typeface="monospace"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:visibility="gone" />
+</LinearLayout>

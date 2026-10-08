@@ -1,26 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme utama: Material 3 Expressive (parent Light; varian Dark ada
-         di values-night/themes.xml dengan item identik). Sudut dijaga
-         TEGAS via token 4/6/8dp (dimens.xml) - default M3E (4-48dp)
-         sengaja TIDAK dipakai agar tidak terlalu round. -->
-    <style name="Theme.WpmultiTest" parent="Theme.Material3Expressive.Light.NoActionBar">
-        <!-- Palet "Orkid Tegas": diekstrak dari image referensi
-             (klaster dominan orkid-magenta). Light = primary #8D32AE;
-             night = primary #E5A0E2. Detail di colors.xml. -->
+    <!-- Theme utama: Material 3 Expressive - DARK-ONLY (tema "Cybercore").
+         Varian Light + values-night/ dihapus: identitas cybercore memang
+         gelap, satu sumber palet di values/colors.xml untuk semua
+         konfigurasi. Sudut dijaga TEGAS via token 4/6/8dp (dimens.xml)
+         - default M3E (4-48dp) sengaja TIDAK dipakai agar tidak terlalu
+         round. -->
+    <style name="Theme.WpmultiTest" parent="Theme.Material3Expressive.Dark.NoActionBar">
+        <!-- Palet "Cybercore": kanvas near-black biru #0B1119, aksen neon
+             cyan #22D3EE + magenta #F0ABFC. Detail + kontras di
+             colors.xml. -->
         <item name="colorPrimary">@color/m3_primary</item>
         <item name="colorOnPrimary">@color/m3_on_primary</item>
         <item name="colorPrimaryContainer">@color/m3_primary_container</item>
         <item name="colorOnPrimaryContainer">@color/m3_on_primary_container</item>
+        <!-- Sekunder diremap GLOBAL lagi (keputusan review lama di-scope
+             ke nav karena palet Orkid ingin dibatasi; pada cybercore
+             container sekunder ber-tona cyan justru identitas global:
+             TonalButton/Switch/Chip/CheckBox ikut neon). -->
+        <item name="colorSecondaryContainer">@color/m3_primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/m3_on_primary_container</item>
         <item name="colorSurface">@color/m3_surface</item>
         <item name="android:colorBackground">@color/m3_surface</item>
         <item name="colorSurfaceContainerHighest">@color/m3_surface_container_high</item>
+        <!-- Sweep cy3: seluruh keluarga surfaceContainer (dulu default
+             neutral gray lib) -> tangga near-black biru cybercore. -->
+        <item name="colorSurfaceContainerLowest">@color/m3_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/m3_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/m3_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/m3_surface_container_high</item>
+        <item name="colorSurfaceDim">@color/m3_surface_dim</item>
+        <item name="colorSurfaceBright">@color/m3_surface_bright</item>
         <item name="colorOnSurfaceVariant">@color/m3_on_surface_variant</item>
         <item name="colorOutline">@color/m3_outline</item>
         <item name="colorTertiary">@color/m3_tertiary</item>
+        <!-- Overscroll glow cyan (bukan default abu-abu). -->
+        <item name="android:colorEdgeEffect">@color/glitch_scan</item>
+        <!-- Snackbar (defensif): kalaupun dipakai nanti, tetap cyber,
+             tidak memakai inverseSurface terang bawaan M3. -->
+        <item name="snackbarStyle">@style/Widget.Wpmulti.Snackbar</item>
+        <item name="snackbarTextViewStyle">@style/Widget.Wpmulti.Snackbar.TextView</item>
 
-        <!-- Tombol default tonal (abu, mendekati karakter lama), bukan
-             filled - hierarki primary bisa ditambah eksplisit nanti -->
+        <!-- Tombol default tonal - kini ber-tona cyan container (cybercore)
+             hierarki primary tetap bisa ditambah eksplisit nanti -->
         <item name="materialButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
 
         <!-- SUDUT TEGAS lapis 1: 3 attr komponen klasik (tonal button,
@@ -69,7 +91,7 @@
 
     <!-- Kartu fungsional (dipakai Beranda task 2, lalu Sesi/Setelan task
          3/4): elevated + sudut token besar + surface_container_high.
-         Warna via @color resource → night otomatis dari values-night. -->
+         Warna via @color resource -> dark-only dari values/colors.xml. -->
     <style name="Widget.Wpmulti.Card" parent="Widget.Material3.CardView.Elevated">
         <item name="shapeAppearance">@style/Shape.Wpmulti.Large</item>
         <item name="cardBackgroundColor">@color/m3_surface_container_high</item>
@@ -82,12 +104,39 @@
         <item name="shapeAppearance">@style/Shape.Wpmulti.Small</item>
     </style>
 
-    <!-- Kartu hero Beranda: bg colorPrimaryContainer (BUKAN colorPrimary)
-         agar warna status semantik yang di-set Java (merah FF5252/amber/
-         hijau pada statusBar) tetap terbaca di light+night. -->
+    <!-- Kartu hero Beranda: bg colorPrimaryContainer (#00404F deep teal)
+         (BUKAN colorPrimary) agar warna status semantik yang di-set Java
+         (merah/amber/hijau pada statusBar) tetap terbaca di kanvas gelap.
+         Sekarang redundan dengan remap global, dipertahankan eksplisit. -->
     <style name="Widget.Wpmulti.HeroCard" parent="Widget.Material3.CardView.Elevated">
         <item name="shapeAppearance">@style/Shape.Wpmulti.Large</item>
         <item name="cardBackgroundColor">@color/m3_primary_container</item>
         <item name="contentPadding">16dp</item>
+    </style>
+
+    <!-- (Review) warna indikator nav DIBATASI ke BottomNavigationView saja
+         via materialThemeOverlay - dulu diremap global di tema, yang ikut
+         mengubah Switch/CheckBox/Chip di halaman lain. Pada cybercore remap
+         global sudah aktif (nilai identik); overlay dipertahankan agar
+         kontrak "nav selalu neon" eksplisit. -->
+    <style name="ThemeOverlay.Wpmulti.NavPill" parent="">
+        <item name="colorSecondaryContainer">@color/m3_primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/m3_on_primary_container</item>
+    </style>
+    <style name="Widget.Wpmulti.Nav" parent="Widget.Material3.BottomNavigationView">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.Wpmulti.NavPill</item>
+    </style>
+
+    <!-- Snackbar cyber (defensif cy3): container near-black biru + teks
+         monospace cyan muda. Tidak dipakai kode saat ini (notif lewat HUD
+         in-app), tapi style disiapkan agar tak pernah muncul box terang
+         default M3. -->
+    <style name="Widget.Wpmulti.Snackbar" parent="Widget.Material3.Snackbar">
+        <item name="backgroundTint">@color/m3_surface_container_high</item>
+        <item name="elevation">6dp</item>
+    </style>
+    <style name="Widget.Wpmulti.Snackbar.TextView" parent="Widget.Material3.Snackbar.TextView">
+        <item name="android:textColor">@color/m3_on_primary_container</item>
+        <item name="android:typeface">monospace</item>
     </style>
 </resources>

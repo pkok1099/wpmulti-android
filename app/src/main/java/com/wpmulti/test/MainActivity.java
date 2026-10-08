@@ -3,6 +3,7 @@ package com.wpmulti.test;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
+import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -16,6 +17,7 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -24,6 +26,11 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import androidx.dynamicanimation.animation.DynamicAnimation;
+import androidx.dynamicanimation.animation.SpringAnimation;
+import androidx.dynamicanimation.animation.SpringForce;
+import com.google.android.material.shape.MaterialShapeDrawable;
+import com.google.android.material.shape.ShapeAppearanceModel;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -81,14 +88,34 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView headerStats;
     private TextView statusBar;
+    // Glitchcore cy3: HUD notifikasi in-app (pengganti Toast sistem yang
+    // tampil sbg box abu-abu gelap di atas pill nav).
+    private TextView hudToast;
+    private final Runnable hudHide = () -> {
+        if (hudToast != null) {
+            hudToast.setVisibility(android.view.View.GONE);
+        }
+    };
     private TextView logView;
     private TextView totalView;
     private TextView verifyView;
     private TextView testResult;
-    private TextView monRam, monCpu, monCache, monSesi, monSesiDetail, monGo;
+    private TextView monRam, monCpu, monCache, monSesi, monGo;
+    // Fase 3: throughput = angka besar + total per arah; monSesiDetail
+    // kini CONTAINER chip sesi (LinearLayout), bukan TextView monospace.
+    private TextView monRx, monTx, monRxTotal, monTxTotal;
+    private LinearLayout monSesiDetail;
     private TrafficGraphView trafficGraph;
     // total sesi sebelumnya (untuk hitung rate per detik)
     private long prevSessTx = -1, prevSessRx = -1, prevSessT = 0;
+    // Fase 3 (revisi review): chip sesi di-update IN-PLACE (tanpa inflate
+    // ulang per tick) dan status expand per sesi dipersist di expandedSess
+    // - dulu rebuild tiap 2 dtk membuat detail yang di-expand kolap
+    // sendiri. prevSessAct = total tx+rx tick lalu, untuk mendeteksi
+    // sesi yang aktif mengirim/menerima.
+    private final java.util.Map<Integer, View> chipViews = new java.util.HashMap<>();
+    private final java.util.Set<Integer> expandedSess = new java.util.HashSet<>();
+    private final java.util.Map<Integer, Long> prevSessAct = new java.util.HashMap<>();
 
     private TextView vpnStatusView, vpnStatsView;
     private TextView proxyStatusView; // label "Proxy SOCKS5/HTTP: aktif/tidak aktif"
@@ -107,6 +134,19 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout proxyTable;
     private EditText logFilter;
     private Spinner logLevel;
+    // Fase 4: elemen hidup - LoadingIndicator transisi, denyut dot
+    // status RUNNING, morph sudut tombol START<->STOP, bounce spring.
+    private View heroLoading;
+    private ValueAnimator dotPulse;
+    // guard bounce: dulu bounce terpicu walau state tidak berubah
+    // (setEngineState redundan dari rebuildConfigRows dll) - sekarang
+    // fx hanya jalan saat state benar-benar berubah.
+    private int lastFxState = -1;
+    // morph: fallback diam + log sekali saja bila background tombol
+    // ternyata bukan MaterialShapeDrawable (fitur tidak boleh crash).
+    private boolean msdWarned = false;
+    // bounce: pola sama dengan morph - fitur hidup tidak boleh crash.
+    private boolean bounceWarned = false;
     private final List<Profile> profiles = new ArrayList<>();
     private final List<EditText> countFields = new ArrayList<>();
     private final List<View> configRows = new ArrayList<>();
@@ -222,7 +262,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("BERHENTI");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_red, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFF5252);
+                    glitchFlash(statusBar, getColor(R.color.status_red));
                     break;
                 case ST_STARTING:
                     btn.setText("MEMULAI...");
@@ -231,7 +271,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MEMULAI...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFFD740);
+                    glitchFlash(statusBar, getColor(R.color.status_amber));
                     break;
                 case ST_RUNNING:
                     btn.setText("STOP");
@@ -244,7 +284,7 @@ public class MainActivity extends AppCompatActivity {
                             + EngineClient.get().snapshot().sessions + " sesi");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_green, 0, 0, 0);
-                    statusBar.setTextColor(0xFF69F0AE);
+                    glitchFlash(statusBar, getColor(R.color.status_green));
                     break;
                 case ST_STOPPING:
                     btn.setText("MENGHENTIKAN...");
@@ -253,7 +293,7 @@ public class MainActivity extends AppCompatActivity {
                     statusBar.setText("MENGHENTIKAN...");
                     statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
                             R.drawable.ic_dot_amber, 0, 0, 0);
-                    statusBar.setTextColor(0xFFFFD740);
+                    glitchFlash(statusBar, getColor(R.color.status_amber));
                     break;
             }
             boolean cfg = (st == ST_IDLE);
@@ -267,24 +307,212 @@ public class MainActivity extends AppCompatActivity {
             boolean tst = (st == ST_RUNNING);
             findViewById(R.id.test1Btn).setEnabled(tst);
             findViewById(R.id.test20Btn).setEnabled(tst);
+            // Fase 4: elemen hidup - loading transisi, denyut dot, morph
+            // & bounce (morph/bounce hanya saat state benar2 berubah).
+            boolean fxChanged = (st != lastFxState);
+            lastFxState = st;
+            // cy6: loading indicator muncul/hilang KARENA GLITCH (bukan
+            // toggle visibility kasar). Sembunyi ditunda 110ms agar flicker
+            // "de-rez" terlihat; guard state mencegah GONE salah waktu.
+            if (st == ST_STARTING || st == ST_STOPPING) {
+                heroLoading.setVisibility(View.VISIBLE);
+                GlitchText.glitchAppear(heroLoading);
+            } else if (heroLoading.getVisibility() == View.VISIBLE) {
+                GlitchText.glitchDisappear(heroLoading);
+                heroLoading.postDelayed(() -> {
+                    if (engineState != ST_STARTING
+                            && engineState != ST_STOPPING) {
+                        heroLoading.setVisibility(View.GONE);
+                    } else {
+                        // cy6: guard gagal (state balik STARTING) - pulihkan
+                        // alpha agar elemen tidak tertinggal transparan.
+                        heroLoading.setAlpha(1f);
+                    }
+                }, 110);
+            }
+            updateDotPulse(st);
+            if (fxChanged) {
+                morphEngineButton(btn, st);
+                bounceEngine(btn);
+                // cy6: perubahan state engine = glitch MAJOR di kartu hero
+                // (statusBar/monGo/btnEngine ikut "kehilangan sinkron").
+                View hero = btn.getParent() instanceof View
+                        ? (View) btn.getParent() : null;
+                if (hero != null) GlitchText.glitchMajor(hero);
+            }
             updateVpnUi();
         });
     }
 
+    // ---------- Fase 4: elemen hidup ----------
+    // Denyut dot status saat engine berjalan: alpha compound drawable
+    // status bar 255 <-> ~90, 900ms bolak-balik. Dibatalkan di state
+    // lain dan di onPause (hemat CPU/baterai; dulu jalan terus walau
+    // activity tidak terlihat); dinyalakan lagi di onResume.
+    private void updateDotPulse(int st) {
+        if (st != ST_RUNNING) {
+            stopDotPulse();
+            return;
+        }
+        if (dotPulse != null) return; // sudah berdenyut
+        if (animScale() <= 0f) return; // hormati "hapus animasi"
+        android.graphics.drawable.Drawable[] ca =
+                statusBar.getCompoundDrawablesRelative();
+        if (ca == null || ca.length < 1 || ca[0] == null) return;
+        final android.graphics.drawable.Drawable dot = ca[0].mutate();
+        dotPulse = ValueAnimator.ofFloat(1f, 0.35f);
+        dotPulse.setDuration(900);
+        dotPulse.setRepeatCount(ValueAnimator.INFINITE);
+        dotPulse.setRepeatMode(ValueAnimator.REVERSE);
+        dotPulse.addUpdateListener(a -> dot.setAlpha(
+                Math.round((Float) a.getAnimatedValue() * 255f)));
+        dotPulse.start();
+    }
+
+    private void stopDotPulse() {
+        if (dotPulse != null) {
+            dotPulse.cancel();
+            dotPulse = null;
+            // pastikan dot kembali penuh (alpha bisa tertinggal rendah)
+            android.graphics.drawable.Drawable[] ca =
+                    statusBar.getCompoundDrawablesRelative();
+            if (ca != null && ca.length > 0 && ca[0] != null)
+                ca[0].mutate().setAlpha(255);
+        }
+    }
+
+    // Morph sudut tombol START<->STOP via MaterialShapeDrawable (lapisan
+    // 0 dari RippleDrawable bawaan MaterialButton): START = sudut tegas
+    // token large (8dp), STOP = pill (tinggi aktual / 2). Dihormati
+    // animScale; fallback diam + log sekali bila background bukan
+    // MaterialShapeDrawable - fitur dekoratif tidak boleh crash.
+    private void morphEngineButton(final MaterialButton btn, int st) {
+        if (animScale() <= 0f) return;
+        try {
+            android.graphics.drawable.Drawable bg = btn.getBackground();
+            MaterialShapeDrawable msd = null;
+            if (bg instanceof MaterialShapeDrawable) {
+                msd = (MaterialShapeDrawable) bg;
+            } else if (bg instanceof android.graphics.drawable.RippleDrawable) {
+                android.graphics.drawable.Drawable c =
+                        ((android.graphics.drawable.RippleDrawable) bg)
+                                .getDrawable(0);
+                if (c instanceof MaterialShapeDrawable) {
+                    msd = (MaterialShapeDrawable) c;
+                }
+            }
+            if (msd == null) return;
+            int hgt = btn.getHeight();
+            if (hgt <= 0) {
+                hgt = (int) (56 * getResources()
+                        .getDisplayMetrics().density);
+            }
+            float from = msd.getShapeAppearanceModel()
+                    .getTopRightCornerSize().getCornerSize(
+                            new android.graphics.RectF(0, 0,
+                                    btn.getWidth(), hgt));
+            float target = st == ST_RUNNING
+                    ? hgt / 2f
+                    : 8 * getResources().getDisplayMetrics().density;
+            // lambda butuh effectively-final (msd di-reassign di atas)
+            final MaterialShapeDrawable msdF = msd;
+            ValueAnimator va = ValueAnimator.ofFloat(from, target);
+            va.setDuration(260);
+            va.addUpdateListener(a -> {
+                float r = (Float) a.getAnimatedValue();
+                msdF.setShapeAppearanceModel(
+                        ShapeAppearanceModel.builder()
+                                .setAllCornerSizes(r)
+                                .build());
+            });
+            va.start();
+        } catch (Exception e) {
+            if (!msdWarned) {
+                msdWarned = true;
+                log(LV_DEBUG, "morph tombol dilewati: " + e.getMessage());
+            }
+        }
+    }
+
+    // Bounce spring halus saat tombol kembali aktif (state berubah).
+    // Di-guard animScale; dipicu hanya dari jalur fxChanged.
+    // FIX crash "Final position of the spring cannot be greater than the
+    // max value": SpringForce() tanpa setFinalPosition memakai default
+    // Double.MAX_VALUE (AAR dynamicanimation 1.1.0, terverifikasi via
+    // javap); setSpring(f) menimpa SpringForce(1f) dari konstruktor, lalu
+    // (float) Double.MAX_VALUE = +Infinity -> sanityCheck() melempar.
+    // Final position kini eksplisit di SpringForce; try/catch meniru morph
+    // (fitur hidup tidak boleh crash).
+    private void bounceEngine(final MaterialButton btn) {
+        if (animScale() <= 0f) return;
+        try {
+            SpringForce f = new SpringForce(1f)
+                    .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
+                    .setStiffness(SpringForce.STIFFNESS_LOW);
+            new SpringAnimation(btn, DynamicAnimation.SCALE_X, 1f)
+                    .setSpring(f).setStartValue(0.92f).start();
+            new SpringAnimation(btn, DynamicAnimation.SCALE_Y, 1f)
+                    .setSpring(f).setStartValue(0.92f).start();
+        } catch (Exception e) {
+            if (!bounceWarned) {
+                bounceWarned = true;
+                log(LV_DEBUG, "bounce dilewati: " + e.getMessage());
+            }
+        }
+    }
+
     // ---------- Pages ----------
     private int currentPage = R.id.pageHome;
+    // Fase 2: transisi halaman fade+slide. View yang sedang dianimasikan
+    // disimpan agar transisi berikutnya membatalkan yang lama (anti-race).
+    private View pageAnimView;
+
+    // Skala animator global (Setelan developer > skala animasi; 0 =
+    // "hapus animasi"): 0 -> animasi UI dilewati, langsung state final.
+    // Fallback 1f bila key tidak tersedia.
+    private float animScale() {
+        try {
+            return android.provider.Settings.Global.getFloat(
+                    getContentResolver(),
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                    1f);
+        } catch (Exception e) {
+            return 1f;
+        }
+    }
 
     // Overhaul UI 1/7: navigasi by-ID halaman (pageHome/pageSesi/pageLog/
     // pageSetting) — pengganti showPage(int idx) era navigasi drawer.
+    // Fase 2: halaman yang tampil diberi transisi fade+slide ringan
+    // (dilewati bila animator scale 0; transisi sebelumnya dibatalkan
+    // dulu agar tidak bertumpuk).
     private void showPage(int pageId) {
+        View oldView = findViewById(currentPage);
+        View newView = findViewById(pageId);
         currentPage = pageId;
-        int[] pages = {R.id.pageHome, R.id.pageSesi, R.id.pageLog,
-                R.id.pageSetting};
-        for (int id : pages) {
-            findViewById(id).setVisibility(id == pageId ? View.VISIBLE
-                    : View.GONE);
+
+        View navPillGlitch = findViewById(R.id.navPill);
+        if (navPillGlitch != null) {
+            GlitchText.glitchJitter(navPillGlitch, GlitchText.MINOR);
         }
-        if (pageId == R.id.pageLog) renderLog(); // flush log yang tertunda saat masuk halaman Log
+
+        if (oldView != null && oldView != newView) {
+            GlitchText.glitchPageTransition(oldView, newView, () -> {
+                if (pageId == R.id.pageLog) renderLog();
+            });
+        } else {
+            int[] pages = {R.id.pageHome, R.id.pageSesi, R.id.pageLog, R.id.pageSetting};
+            for (int id : pages) {
+                View v = findViewById(id);
+                if (v != null) {
+                    v.setVisibility(id == pageId ? View.VISIBLE : View.GONE);
+                }
+            }
+            if (newView != null) {
+                GlitchText.glitchMajor(newView);
+            }
+            if (pageId == R.id.pageLog) renderLog();
+        }
     }
 
     // ---------- VPN ----------
@@ -300,7 +528,8 @@ public class MainActivity extends AppCompatActivity {
                         + (proxyOn
                             ? "aktif (SOCKS5 127.0.0.1:1080 \u00b7 HTTP 127.0.0.1:8080)"
                             : "tidak aktif"));
-                proxyStatusView.setTextColor(proxyOn ? 0xFF69F0AE : 0xFFFF8A80);
+                proxyStatusView.setTextColor(getColor(proxyOn
+                        ? R.color.status_green : R.color.status_coral));
             }
             // VPN (TUN) adalah subsistem TERPISAH dari proxy: bisa mati
             // sementara proxy aktif. Label dibuat eksplisit agar tidak
@@ -308,13 +537,35 @@ public class MainActivity extends AppCompatActivity {
             vpnStatusView.setText("VPN (TUN): "
                     + (vpnOn ? "dipakai \u2014 trafik dirutekan lewat tunnel"
                             : "tidak dipakai"));
-            vpnStatusView.setTextColor(vpnOn ? 0xFF69F0AE : 0xFFBDBDBD);
+            vpnStatusView.setTextColor(getColor(vpnOn
+                    ? R.color.status_green : R.color.status_gray));
             if (vpnOn) {
                 vpnStatsView.setText("koneksi TCP: " + VpnEngine.connCount()
                         + "\nRX: " + fmtBytes(VpnEngine.bytesRx())
                         + " | TX: " + fmtBytes(VpnEngine.bytesTx()));
+                // cy6: stats muncul KARENA GLITCH hanya saat transisi
+                // GONE -> VISIBLE (updateVpnUi dipanggil tiap tick monitor;
+                // tanpa guard, glitch terpicu berulang tiap 2 dtk).
+                if (vpnStatsView.getVisibility() != View.VISIBLE) {
+                    vpnStatsView.setVisibility(View.VISIBLE);
+                    GlitchText.glitchAppear(vpnStatsView);
+                }
             } else {
                 vpnStatsView.setText("");
+                // cy6: hilang KARENA GLITCH - de-rez dulu 110ms, baru GONE
+                // (guard VpnEngine.running mencegah GONE salah waktu).
+                if (vpnStatsView.getVisibility() == View.VISIBLE) {
+                    GlitchText.glitchDisappear(vpnStatsView);
+                    vpnStatsView.postDelayed(() -> {
+                        if (!VpnEngine.running) {
+                            vpnStatsView.setVisibility(View.GONE);
+                        } else {
+                            // cy6: guard gagal (VPN nyambung lagi <110ms) -
+                            // pulihkan alpha agar tidak transparan permanen.
+                            vpnStatsView.setAlpha(1f);
+                        }
+                    }, 110);
+                }
             }
             vpnToggleBtn.setText(vpnOn ? "DISCONNECT VPN"
                     : "CONNECT VPN");
@@ -564,6 +815,9 @@ public class MainActivity extends AppCompatActivity {
                 tv.setText(label);
                 String key = "vpn_app_ip_" + pkg;
                 btn.setText(appIpModeLabel(vp.getString(key, "")));
+                // cy6: baris dialog ikut sistem glitch (dedup di dalam).
+                GlitchText.registerTree(row);
+                GlitchText.installTouch(row);
                 btn.setOnClickListener(v -> {
                     String cur = vp.getString(key, "");
                     String next = cur.isEmpty() ? "v4"
@@ -571,6 +825,10 @@ public class MainActivity extends AppCompatActivity {
                     if (next.isEmpty()) vp.edit().remove(key).apply();
                     else vp.edit().putString(key, next).apply();
                     btn.setText(appIpModeLabel(next));
+                    // cy6: mode per IP berubah = glitch MEDIUM pada baris
+                    // (label tombol ikut glitchNow - teks berganti mode).
+                    GlitchText.glitchNow(btn, GlitchText.MEDIUM);
+                    GlitchText.glitchTree(row, GlitchText.MEDIUM);
                     updateVpnIpModeCount();
                 });
                 return row;
@@ -578,11 +836,22 @@ public class MainActivity extends AppCompatActivity {
         };
         addSearchHeader(lv, apps, shown, ad);
         lv.setAdapter(ad);
-        new android.app.AlertDialog.Builder(this)
+        // cy6: dialog "Mode IP per aplikasi" muncul KARENA GLITCH + seluruh
+        // isi (judul, tombol, list) terdaftar ke sistem glitch.
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Mode IP per aplikasi")
                 .setView(lv)
-                .setPositiveButton("Tutup", null)
+                .setPositiveButton("Tutup", (d, w) -> {
+                    if (d instanceof android.app.Dialog) {
+                        GlitchText.glitchDisappear(((android.app.Dialog) d).getWindow().getDecorView());
+                    }
+                })
                 .show();
+        View dec = dlg.getWindow() != null
+                ? dlg.getWindow().getDecorView() : lv;
+        GlitchText.registerTree(dec);
+        GlitchText.installTouch(dec);
+        GlitchText.glitchAppear(dec);
     }
 
 
@@ -617,32 +886,85 @@ public class MainActivity extends AppCompatActivity {
                 cb.setText(label);
                 cb.setOnCheckedChangeListener(null);
                 cb.setChecked(checked.contains(pkg));
+                // cy6: baris dialog ikut sistem glitch (dedup di dalam).
+                GlitchText.registerTree(cb);
+                GlitchText.installTouch(cb);
                 cb.setOnCheckedChangeListener((b, isC) -> {
                     if (isC) checked.add(pkg);
                     else checked.remove(pkg);
+                    // cy6: pilihan aplikasi berubah = glitch MINOR pada
+                    // checkbox itu sendiri (feedback pilihan tercatat).
+                    GlitchText.glitchNow(cb, GlitchText.MINOR);
                 });
                 return cb;
             }
         };
         addSearchHeader(lv, apps, shown, ad);
         lv.setAdapter(ad);
-        new android.app.AlertDialog.Builder(this)
+        // cy6: dialog "Pilih aplikasi" (Split Tunnel) muncul KARENA GLITCH.
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Pilih aplikasi")
                 .setView(lv)
                 .setPositiveButton("OK", (d, w) -> {
+                    if (d instanceof android.app.Dialog) {
+                        GlitchText.glitchDisappear(((android.app.Dialog) d).getWindow().getDecorView());
+                    }
                     getSharedPreferences("vpn", MODE_PRIVATE).edit()
                             .putStringSet("vpn_apps", checked).apply();
                     updateVpnAppCount();
                     log("per-app: " + checked.size() + " aplikasi dipilih");
                 })
-                .setNegativeButton("Batal", null)
+                .setNegativeButton("Batal", (d, w) -> {
+                    if (d instanceof android.app.Dialog) {
+                        GlitchText.glitchDisappear(((android.app.Dialog) d).getWindow().getDecorView());
+                    }
+                })
                 .show();
+        View dec = dlg.getWindow() != null
+                ? dlg.getWindow().getDecorView() : lv;
+        GlitchText.registerTree(dec);
+        GlitchText.installTouch(dec);
+        GlitchText.glitchAppear(dec);
     }
 
 
+    // Glitchcore cy3: HUD in-app pengganti Toast - teks prefix "> " ala
+    // terminal, auto-hide 2.4 detik; fallback ke Toast kalau dipanggil
+    // sebelum binding layout selesai.
+    private void hud(final String msg) {
+        if (hudToast == null) {
+            android.widget.Toast.makeText(this, msg,
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ui.post(() -> {
+            hudToast.removeCallbacks(hudHide);
+            hudToast.setText("> " + msg);
+            hudToast.setVisibility(android.view.View.VISIBLE);
+            // cy6: HUD muncul KARENA GLITCH (materialize), bukan fade.
+            GlitchText.glitchAppear(hudToast);
+            hudToast.postDelayed(hudHide, 2400);
+        });
+    }
+
+    // Glitchcore cy3: kilat 4 langkah putih -> merah -> cyan -> putih
+    // sebelum warna status final (kesan "sinyal kehilangan sinkron" saat
+    // engine pindah state). Hormati pengaturan animasi (animScale 0 =
+    // langsung warna final, tanpa kilat).
+    private void glitchFlash(final TextView tv, final int finalColor) {
+        if (animScale() <= 0f) {
+            tv.setTextColor(finalColor);
+            return;
+        }
+        tv.setTextColor(getColor(R.color.glitch_white));
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.glitch_shadow)), 45);
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.m3_primary)), 90);
+        tv.postDelayed(() -> tv.setTextColor(getColor(R.color.glitch_white)), 135);
+        tv.postDelayed(() -> tv.setTextColor(finalColor), 180);
+    }
+
     private void toastDns(String msg) {
-        ui.post(() -> android.widget.Toast.makeText(this, msg,
-                android.widget.Toast.LENGTH_SHORT).show());
+        hud(msg);
     }
 
     private void toggleVpn() {
@@ -654,9 +976,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (engineState != ST_RUNNING) {
-            ui.post(() -> android.widget.Toast.makeText(this,
-                    "Start engine dulu sebelum VPN",
-                    android.widget.Toast.LENGTH_SHORT).show());
+            hud("Start engine dulu sebelum VPN");
             return;
         }
         String mode = dnsModeKey();
@@ -747,6 +1067,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---------- Config rows ----------
+    // cy6: indeks profile yang BARU ditambahkan (di-set onActivityResult
+    // sebelum rebuild) - row-nya di-glitch-appear spesifik; -1 = rebuild
+    // biasa (hapus/onCreate) -> container direkonstruksi dgn glitch MAJOR.
+    private int lastAddedProfileIdx = -1;
+
     private void rebuildConfigRows() {
         configContainer.removeAllViews();
         countFields.clear();
@@ -756,6 +1081,8 @@ public class MainActivity extends AppCompatActivity {
             Profile pr = profiles.get(i);
             View row = LayoutInflater.from(this)
                     .inflate(R.layout.row_config, configContainer, false);
+            GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
+            GlitchText.installTouch(row); // Task 33: tombol +/-/max/hapus glitch
             ((TextView) row.findViewById(R.id.label)).setText(pr.name);
             EditText et = row.findViewById(R.id.count);
             et.setText(String.valueOf(pr.count));
@@ -800,15 +1127,28 @@ public class MainActivity extends AppCompatActivity {
             row.findViewById(R.id.del).setOnClickListener(v -> {
                 Profile rm = profiles.remove(idx);
                 if (rm.file.exists()) rm.file.delete();
+                lastAddedProfileIdx = -1; // hapus -> rekonstruksi container
                 rebuildConfigRows();
                 updateTotal();
                 log("profile dihapus: " + rm.name);
             });
             configContainer.addView(row);
             configRows.add(row);
+            // cy6: config baru "recovered karena glitch" pada ENTRY-nya
+            // sendiri (bukan sekadar flicker seluruh list).
+            if (idx == lastAddedProfileIdx) GlitchText.glitchAppear(row);
         }
         updateTotal();
         updateAddBtn();
+        // cy6: seluruh list yang direkonstruksi (hapus/onCreate-after-start)
+        // terasa "rebuild karena glitch" (MAJOR); penambahan row cukup
+        // MINOR di container (row barunya sudah MAJOR-style appear).
+        if (lastAddedProfileIdx >= 0) {
+            GlitchText.glitchView(configContainer, GlitchText.MINOR);
+        } else {
+            GlitchText.glitchMajor(configContainer);
+        }
+        lastAddedProfileIdx = -1;
         // terapkan lock jika engine tidak idle
         if (engineState != ST_IDLE) setEngineState(engineState);
     }
@@ -855,12 +1195,17 @@ public class MainActivity extends AppCompatActivity {
         boolean running = EngineClient.get().snapshot().running;
         addProxyRow("SOCKS5", "127.0.0.1:1080", running);
         addProxyRow("HTTP", "127.0.0.1:8080", running);
+        // cy6: tabel proxy rebuild = "muncul kembali karena glitch"
+        // (flicker + squeeze + jitter + burst MEDIUM).
+        GlitchText.glitchAppear(proxyTable);
         updateVpnUi(); // segarkan juga label proxy/VPN dari sumber yang sama
     }
 
     private void addProxyRow(String name, String addr, boolean running) {
         View row = LayoutInflater.from(this)
                 .inflate(R.layout.row_proxy, proxyTable, false);
+        GlitchText.registerTree(row); // Task 32: row dinamis ikut wander
+        GlitchText.installTouch(row); // Task 33: tombol salin glitch
         ((TextView) row.findViewById(R.id.proxyName)).setText(name);
         ((TextView) row.findViewById(R.id.proxyAddr)).setText(addr);
         ((TextView) row.findViewById(R.id.proxyStatus))
@@ -1057,32 +1402,20 @@ public class MainActivity extends AppCompatActivity {
                 final String fSys = "sistem " + (totalMb - availMb) + "/" + totalMb + " MB";
                 final String fCache = "cache: " + cacheKb + " KB";
                 // Statistik per sesi dari GET_STATUS (JSON via binder).
+                // Fase 3: baris teks "#0 hs=- tx=0 B rx=0 B" diganti chip
+                // (rebuildSessionChips); di sini cukup total + array-nya.
                 long sessTx = 0, sessRx = 0;
                 int nSess = 0;
-                StringBuilder sessDetail = new StringBuilder();
+                org.json.JSONArray arr = null;
                 try {
-                    org.json.JSONArray arr = new org.json.JSONArray(
+                    arr = new org.json.JSONArray(
                             es.sessionStats == null ? "[]" : es.sessionStats);
                     nSess = arr.length();
-                    int show = Math.min(nSess, 20);
                     for (int i = 0; i < nSess; i++) {
                         org.json.JSONObject o = arr.getJSONObject(i);
-                        long tx = o.optLong("tx_bytes");
-                        long rx = o.optLong("rx_bytes");
-                        sessTx += tx;
-                        sessRx += rx;
-                        if (i < show) {
-                            long hs = o.optLong("handshake_age_sec", -1);
-                            sessDetail.append(String.format(
-                                    "#%d hs=%s tx=%s rx=%s\n",
-                                    o.optInt("index", i),
-                                    hs < 0 ? "-" : hs + "s",
-                                    fmtBytes(tx), fmtBytes(rx)));
-                        }
+                        sessTx += o.optLong("tx_bytes");
+                        sessRx += o.optLong("rx_bytes");
                     }
-                    if (nSess > show)
-                        sessDetail.append("+").append(nSess - show)
-                                .append(" sesi lain");
                 } catch (Exception ignored) {}
                 long rateTx = 0, rateRx = 0;
                 if (prevSessT > 0 && curTime > prevSessT) {
@@ -1095,25 +1428,118 @@ public class MainActivity extends AppCompatActivity {
                 prevSessTx = sessTx;
                 prevSessRx = sessRx;
                 prevSessT = curTime;
-                final String fSesi = "sesi aktif: " + nSess
-                        + " | TX " + fmtBytes(sessTx)
-                        + " (" + fmtBytes(rateTx) + "/s)"
-                        + " | RX " + fmtBytes(sessRx)
-                        + " (" + fmtBytes(rateRx) + "/s)";
-                final String fSessDetail = sessDetail.toString();
                 final long fRateTx = rateTx, fRateRx = rateRx;
+                final long fSessTx = sessTx, fSessRx = sessRx;
+                final int fNSess = nSess;
+                final org.json.JSONArray fArr = arr;
                 ui.post(() -> {
                     monGo.setText(fGo);
                     monRam.setText(fApk + " (" + fSys + ")");
                     monCpu.setText("CPU app: " + fCpu);
                     monCache.setText(fCache);
-                    monSesi.setText(fSesi);
-                    monSesiDetail.setText(fSessDetail);
+                    // Fase 3: throughput = angka besar; label sesi ringkas.
+                    monRx.setText(fmtBytes(fRateRx) + "/s");
+                    monRxTotal.setText("total " + fmtBytes(fSessRx));
+                    monTx.setText(fmtBytes(fRateTx) + "/s");
+                    monTxTotal.setText("total " + fmtBytes(fSessTx));
+                    monSesi.setText("sesi aktif: " + fNSess);
+                    rebuildSessionChips(fArr, 20);
                     trafficGraph.addSample(fRateRx, fRateTx);
                     if (VpnEngine.running) updateVpnUi();
                 });
             }
         }).start();
+    }
+
+    // ---------- Fase 3: chip sesi ----------
+    // Satu chip per sesi (maks showCap): dot warna status + judul mono.
+    // Tap chip = buka/tutup detail. Chip di-update IN-PLACE (tanpa
+    // inflate ulang) sehingga detail yang sedang di-expand tidak kolap
+    // tiap tick 2 dtk; status expand dipersist di expandedSess.
+    // Warna dot: hijau = trafik bertambah sejak tick lalu (aktif),
+    // abu = hidup tapi idle, merah = belum pernah handshake (error).
+    private void rebuildSessionChips(org.json.JSONArray arr, int showCap) {
+        if (monSesiDetail == null) return;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        int n = arr == null ? 0 : Math.min(arr.length(), showCap);
+        for (int i = 0; i < n; i++) {
+            try {
+                org.json.JSONObject o = arr.getJSONObject(i);
+                final int idx = o.optInt("index", i);
+                seen.add(idx);
+                long tx = o.optLong("tx_bytes");
+                long rx = o.optLong("rx_bytes");
+                long hs = o.optLong("handshake_age_sec", -1);
+                long act = tx + rx;
+                Long prev = prevSessAct.get(idx);
+                boolean active = prev != null && act > prev;
+                prevSessAct.put(idx, act);
+                View chip = chipViews.get(idx);
+                if (chip == null) {
+                    chip = LayoutInflater.from(this).inflate(
+                            R.layout.row_session, monSesiDetail, false);
+                    chipViews.put(idx, chip);
+                    monSesiDetail.addView(chip);
+                    GlitchText.registerTree(chip); // Task 32: chip sesi ikut wander
+                    // cy6: chip baru "muncul karena glitch" (materialize).
+                    GlitchText.glitchAppear(chip);
+                    final View chipV = chip; // salinan effectively-final utk lambda
+                    final TextView detailCh =
+                            chip.findViewById(R.id.chipDetail);
+                    chip.setOnClickListener(v -> {
+                        boolean show = detailCh.getVisibility()
+                                != View.VISIBLE;
+                        detailCh.setVisibility(show ? View.VISIBLE
+                                : View.GONE);
+                        if (show) {
+                            expandedSess.add(idx);
+                            // cy6: detail ter-expand "reconstruct": teks
+                            // detail glitch + chip tergemetrek MINOR.
+                            GlitchText.glitchNow(detailCh);
+                        }
+                        GlitchText.glitchJitter(chipV, GlitchText.MINOR);
+                    });
+                }
+                View dot = chip.findViewById(R.id.chipDot);
+                TextView title = chip.findViewById(R.id.chipTitle);
+                TextView detail = chip.findViewById(R.id.chipDetail);
+                // Warna status via resource (cybercore) - getContext()
+                // aman utk semua bentuk scope (lambda/anonymous class).
+                int dotColor = hs < 0
+                        ? dot.getContext().getColor(R.color.status_red)
+                        : (active
+                                ? dot.getContext().getColor(R.color.status_green)
+                                : dot.getContext().getColor(R.color.status_gray));
+                dot.getBackground().mutate().setTint(dotColor);
+                title.setText(String.format("#%d hs=%s tx=%s rx=%s",
+                        idx, hs < 0 ? "-" : hs + "s",
+                        fmtBytes(tx), fmtBytes(rx)));
+                detail.setText(String.format(
+                        "sesi #%d - handshake %s lalu, total %s turun "
+                                + "/ %s naik%s",
+                        idx, hs < 0 ? "belum" : hs + " dtk",
+                        fmtBytes(rx), fmtBytes(tx),
+                        active ? " - aktif" : ""));
+                detail.setVisibility(expandedSess.contains(idx)
+                        ? View.VISIBLE : View.GONE);
+            } catch (Exception ignored) {}
+        }
+        // buang chip sesi yang sudah tidak ada di snapshot terbaru
+        java.util.Iterator<java.util.Map.Entry<Integer, View>> it =
+                chipViews.entrySet().iterator();
+        boolean anyChipGone = false;
+        while (it.hasNext()) {
+            java.util.Map.Entry<Integer, View> e = it.next();
+            if (!seen.contains(e.getKey())) {
+                monSesiDetail.removeView(e.getValue());
+                it.remove();
+                prevSessAct.remove(e.getKey());
+                expandedSess.remove(e.getKey());
+                anyChipGone = true;
+            }
+        }
+        // cy6: chip yang hilang = container ikut "terganggu" sekali (MINOR)
+        if (anyChipGone) GlitchText.glitchView(monSesiDetail, GlitchText.MINOR);
     }
 
     // ---------- Start/Stop ----------
@@ -1330,7 +1756,17 @@ public class MainActivity extends AppCompatActivity {
                 rebuildProxyTable();
                 updateHeader("-", "-");
                 trafficGraph.clear();
-                monSesiDetail.setText("");
+                // Fase 3: monSesiDetail kini container chip - kosongkan
+                // dengan removeAllViews (setText tidak kompile), reset
+                // state chip + angka throughput.
+                monSesiDetail.removeAllViews();
+                chipViews.clear();
+                prevSessAct.clear();
+                expandedSess.clear();
+                monRx.setText("-");
+                monTx.setText("-");
+                monRxTotal.setText("total -");
+                monTxTotal.setText("total -");
                 prevSessTx = -1;
                 prevSessRx = -1;
                 prevSessT = 0;
@@ -1400,33 +1836,93 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(goStatusReceiver, new IntentFilter(GoEngineService.ACTION_STATUS), Context.RECEIVER_NOT_EXPORTED);
         setContentView(R.layout.activity_main);
 
-        // TAHAP 2: WindowInsets — root layout diberi padding systemBars
-        // (top + bottom) supaya toolbar (hamburger + judul) tidak tertimpa
-        // status bar dan tombol STOP tidak tertutup navigation bar.
-        // (targetSdk 35+ memaksa edge-to-edge; minSdk 34 -> API platform
-        // WindowInsets.Type tersedia tanpa androidx.)
+        // TAHAP 2 + fix pill melayang: WindowInsets diterapkan SEKALI di
+        // sini (SATU-satunya tempat; targetSdk 36 edge-to-edge, minSdk 34
+        // -> API WindowInsets.Type tanpa androidx).
+        // - Inset atas: padding TOP root (status bar + cutout, aman notch).
+        // - Inset BAWAH TIDAK lagi menempel root: konten harus lewat di
+        //   belakang pill sampai tepi bawah layar. Dipakai untuk:
+        //   (1) margin bawah pill = inset nav + 4dp -> pill kecil ringkas
+        //       di tengah bawah, tidak menabrak gesture navigation;
+        //   (2) clearance bawah container scroll = token nav_pill_clearance
+        //       + inset -> item terakhir tetap bisa digeser ke atas pill
+        //       (kombinasi dengan clipToPadding=false di layout).
         View rootMain = findViewById(R.id.rootMain);
         rootMain.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(
                     android.view.WindowInsets.Type.systemBars()
                             | android.view.WindowInsets.Type.displayCutout());
             v.setPadding(v.getPaddingLeft(), bars.top,
-                    v.getPaddingRight(), bars.bottom);
+                    v.getPaddingRight(), 0);
+            int base = getResources().getDimensionPixelSize(
+                    R.dimen.nav_pill_clearance);
+            View pill = findViewById(R.id.navPill);
+            if (pill != null) {
+                android.widget.FrameLayout.LayoutParams lp =
+                        (android.widget.FrameLayout.LayoutParams)
+                                pill.getLayoutParams();
+                lp.bottomMargin = bars.bottom + (int) (4 * getResources()
+                        .getDisplayMetrics().density);
+                pill.setLayoutParams(lp);
+            }
+            // HUD notifikasi: tepat di atas pill (inset + 96dp).
+            View hudView = findViewById(R.id.hudToast);
+            if (hudView != null) {
+                android.widget.FrameLayout.LayoutParams hp =
+                        (android.widget.FrameLayout.LayoutParams)
+                                hudView.getLayoutParams();
+                hp.bottomMargin = bars.bottom + (int) (96 * getResources()
+                        .getDisplayMetrics().density);
+                hudView.setLayoutParams(hp);
+            }
+            int[] scrolls = {R.id.pageHome, R.id.pageSesi, R.id.logScroll,
+                    R.id.pageSetting};
+            for (int id : scrolls) {
+                View s = findViewById(id);
+                if (s != null) {
+                    s.setPadding(s.getPaddingLeft(), s.getPaddingTop(),
+                            s.getPaddingRight(), base + bars.bottom);
+                }
+            }
             return android.view.WindowInsets.CONSUMED;
         });
 
         headerStats = findViewById(R.id.headerStats);
         statusBar = findViewById(R.id.statusBar);
+        // Glitchcore: ghost RGB-split - bayangan merah 70% offset 3dp ke
+        // kanan, blur tipis 1dp (tanpa custom view/blur). Warna teks status
+        // tetap dinamis via glitchFlash/status_*; ghost merah di belakangnya
+        // konsisten sebagai sisi R dari pasangan chromatic (vs cyan UI).
+        float gShadowD = getResources().getDisplayMetrics().density;
+        statusBar.setShadowLayer(1f * gShadowD, 3f * gShadowD, 0f,
+                getColor(R.color.glitch_shadow));
+        // Task 32: daftarkan ghost kustom ini sbg baseline di GlitchText
+        // supaya wander burst tidak menghapusnya saat restore.
+        GlitchText.registerCustom(statusBar, 3f * gShadowD,
+                getColor(R.color.glitch_shadow));
+        heroLoading = findViewById(R.id.heroLoading);
         logView = findViewById(R.id.logView);
+        hudToast = findViewById(R.id.hudToast);
         totalView = findViewById(R.id.totalView);
         verifyView = findViewById(R.id.verifyView);
         testResult = findViewById(R.id.testResult);
         monRam = findViewById(R.id.monRam);
         monGo = findViewById(R.id.monGo);
+        // Glitchcore: sisi C dari pasangan chromatic - ghost cyan offset
+        // KIRI di subtitle engine (kebalikan arah ghost merah statusBar).
+        monGo.setShadowLayer(1f * gShadowD, -2f * gShadowD, 0f,
+                getColor(R.color.glitch_shadow_cyan));
+        // Task 32: baseline cyan kiri juga dipelihara via GlitchText.
+        GlitchText.registerCustom(monGo, -2f * gShadowD,
+                getColor(R.color.glitch_shadow_cyan));
         monCpu = findViewById(R.id.monCpu);
         monCache = findViewById(R.id.monCache);
         monSesi = findViewById(R.id.monSesi);
         monSesiDetail = findViewById(R.id.monSesiDetail);
+        monRx = findViewById(R.id.monRx);
+        monTx = findViewById(R.id.monTx);
+        monRxTotal = findViewById(R.id.monRxTotal);
+        monTxTotal = findViewById(R.id.monTxTotal);
         proxyStatusView = findViewById(R.id.proxyStatus);
         // Long-press pada teks CPU untuk dump goroutine stack
         monCpu.setOnLongClickListener(v -> {
@@ -1442,9 +1938,7 @@ public class MainActivity extends AppCompatActivity {
                         ? "goroutine dump OK: " + path
                         : "goroutine dump gagal: " + err;
                     log(msg);
-                    runOnUiThread(() ->
-                        android.widget.Toast.makeText(this, msg,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> hud(msg));
                 } catch (Exception e) {
                     log("goroutine dump error: " + e);
                 }
@@ -1465,9 +1959,7 @@ public class MainActivity extends AppCompatActivity {
                         ? "heap dump OK: " + path
                         : "heap dump gagal: " + err;
                     log(msg);
-                    runOnUiThread(() ->
-                        android.widget.Toast.makeText(this, msg,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> hud(msg));
                 } catch (Exception e) {
                     log("heap dump error: " + e);
                 }
@@ -1500,9 +1992,12 @@ public class MainActivity extends AppCompatActivity {
                 findViewById(R.id.vpnAutoReconnect);
         this.vpnAutoReconnect = vpnAutoReconnect;
         vpnAutoReconnect.setChecked(vprefs.getBoolean("auto_reconnect", true));
-        vpnAutoReconnect.setOnCheckedChangeListener((b, checked) ->
+        vpnAutoReconnect.setOnCheckedChangeListener((b, checked) -> {
+                // cy6: setting berubah = glitch MEDIUM pada section-nya.
+                GlitchText.glitchTree((View) b.getParent(), GlitchText.MEDIUM);
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
-                        .putBoolean("auto_reconnect", checked).apply());
+                        .putBoolean("auto_reconnect", checked).apply();
+        });
         vpnAppMode = findViewById(R.id.vpnAppMode);
         vpnAppCount = findViewById(R.id.vpnAppCount);
         String[] appModes = {"Semua aplikasi", "Hanya yang dipilih",
@@ -1524,6 +2019,9 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "allow" : ps == 2 ? "deny" : "all";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_app_mode", mk).apply();
+                // Task 33: split tunnel pindah mode = glitch di section
+                GlitchText.glitchTree((View) pa.getParent());
+                GlitchText.glitchNow(vpnAppCount);
                 updateVpnAppCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
@@ -1550,6 +2048,10 @@ public class MainActivity extends AppCompatActivity {
                 String mk = ps == 1 ? "v6only" : ps == 2 ? "v4only" : "dual";
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putString("vpn_ip_mode", mk).apply();
+                // Task 33: mode per IP pindah = glitch di section + counter
+                GlitchText.glitchTree((View) pa.getParent());
+                GlitchText.glitchNow(vpnIpModeAppCount);
+                updateVpnIpModeCount();
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
         });
@@ -1570,6 +2072,8 @@ public class MainActivity extends AppCompatActivity {
                 new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p,
                                        android.view.View v, int ps, long id) {
+                // Task 33: dropdown DNS diganti = glitch di section
+                GlitchText.glitchTree((View) p.getParent());
                 updateDnsHint();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
@@ -1580,10 +2084,38 @@ public class MainActivity extends AppCompatActivity {
         logFilter = findViewById(R.id.logFilter);
         logLevel = findViewById(R.id.logLevel);
 
+        // Task 32 (GlitchText "banyak tapi tipis"): daftarkan SELURUH
+        // TextView di bawah rootMain (dashboard, sesi, log, setelan) ke
+        // mesin glitch - ghost tipis baseline + wander burst span neon.
+        // Input user (EditText) dan logView span dikecualikan di dalamnya.
+        GlitchText.registerTree(findViewById(R.id.rootMain));
+        // Task 33: SEMUA Button (glitch saat ditekan) + Spinner (glitch saat
+        // dropdown dibuka) di seluruh halaman.
+        GlitchText.installTouch(findViewById(R.id.rootMain));
+
         // bottom navigation (4 tab) — pengganti navigasi drawer lama
         BottomNavigationView bnv = findViewById(R.id.bottomNav);
+        // cy6: tap di area nav = pill nav terglitch MINOR (feedback press
+        // sebelum transisi halaman MAJOR dijalankan showPage).
+        bnv.setOnTouchListener((v, ev) -> {
+            if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                View pillGlitch = findViewById(R.id.navPill);
+                if (pillGlitch != null) {
+                    GlitchText.glitchView(pillGlitch, GlitchText.MINOR);
+                }
+            }
+            return false; // tidak dikonsumsi: pilihan item tetap normal
+        });
         bnv.setOnItemSelectedListener(item -> {
             int id = item.getItemId();
+            if (id == currentPage) return true;
+
+            // Item-level targeted glitch feedback on navbar state change
+            View itemView = bnv.findViewById(id);
+            if (itemView != null) {
+                GlitchText.glitchMinor(itemView);
+            }
+
             if (id == R.id.navHome) {
                 rebuildProxyTable();
                 updateVpnUi();
@@ -1610,6 +2142,7 @@ public class MainActivity extends AppCompatActivity {
         logLevel.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
                 logLevelSel = (String) p.getItemAtPosition(pos);
+                GlitchText.glitchTree((View) p.getParent()); // Task 33
                 renderLog();
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
@@ -1663,9 +2196,7 @@ public class MainActivity extends AppCompatActivity {
         vpnDropReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context ctx, Intent it) {
                 log(LV_WARN, "KILL SWITCH: VPN putus tak terduga!");
-                ui.post(() -> android.widget.Toast.makeText(ctx,
-                        "VPN putus! Trafik tidak aman.",
-                        android.widget.Toast.LENGTH_LONG).show());
+                hud("VPN putus! Trafik tidak aman.");
                 updateVpnUi();
             }
         };
@@ -1709,9 +2240,7 @@ public class MainActivity extends AppCompatActivity {
                         for (LogEntry e : logLines) pw.println(e.text);
                     }
                     log("log diekspor: " + out.getAbsolutePath());
-                    ui.post(() -> android.widget.Toast.makeText(this,
-                            "Log tersimpan: " + name,
-                            android.widget.Toast.LENGTH_LONG).show());
+                    hud("Log tersimpan: " + name);
                 }
             } catch (Exception e) {
                 log(LV_ERROR, "gagal ekspor log: " + e.getMessage());
@@ -1828,9 +2357,7 @@ public class MainActivity extends AppCompatActivity {
         if (req == PICK_CONF && res == RESULT_OK && data != null) {
             if (profiles.size() >= MAX_PROFILES) {
                 log(LV_WARN, "maksimal " + MAX_PROFILES + " profile");
-                ui.post(() -> android.widget.Toast.makeText(this,
-                        "Maksimal " + MAX_PROFILES + " profile",
-                        android.widget.Toast.LENGTH_SHORT).show());
+                hud("Maksimal " + MAX_PROFILES + " profile");
                 return;
             }
             Uri uri = data.getData();
@@ -1843,6 +2370,9 @@ public class MainActivity extends AppCompatActivity {
                     while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
                 }
                 profiles.add(new Profile(name, out));
+                // cy6: tandai row baru -> rebuildConfigRows memberi glitch
+                // appear spesifik pada entry yang baru dibuat.
+                lastAddedProfileIdx = profiles.size() - 1;
                 rebuildConfigRows();
                 log("profile ditambah: " + name);
             } catch (Exception e) {
@@ -1866,8 +2396,39 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    @Override
+    protected void onPause() {
+        // Fase 4 (revisi review): denyut dot tidak perlu saat activity
+        // tidak terlihat - hentikan agar tidak boros CPU/baterai.
+        stopDotPulse();
+        // Task 32: loop wander GlitchText berhenti + semua kilatan
+        // dipulihkan saat activity tidak terlihat (hemat CPU/baterai).
+        GlitchText.stop();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // cy6: hormati skala animator sistem (0 = "hapus animasi") -
+        // seluruh glitch dimatikan utk aksesibilitas.
+        GlitchText.setAnimScale(animScale());
+        // Task 32: nyalakan lagi wander glitch (registry dipertahankan;
+        // ref mati di-purge di dalam start()).
+        GlitchText.start(this);
+        if (engineState == ST_RUNNING) {
+            // pasang ulang dot lalu denyut lagi (drawable bisa
+            // tertinggal alpha rendah sebelum onPause)
+            statusBar.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                    R.drawable.ic_dot_green, 0, 0, 0);
+            updateDotPulse(ST_RUNNING);
+        }
+    }
+
     private void runPingTest() {
         android.widget.TextView tv = findViewById(R.id.pingResult);
+        // Fase 3: pingResult GONE saat kosong (XML), VISIBLE saat dipakai.
+        tv.setVisibility(View.VISIBLE);
         tv.setText("testing...");
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();

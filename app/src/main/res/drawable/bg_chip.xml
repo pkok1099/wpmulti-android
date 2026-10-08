@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fase 3: latar chip sesi - rounded rect token sudut large (8dp),
+     warna surface container high (night otomatis dari values-night). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="8dp" />
+    <solid android:color="@color/m3_surface_container_high" />
+</shape>

@@ -19,27 +19,34 @@
      Log (4/7): logFilter di TextInputLayout Widget.Wpmulti.TextField;
      copyLogBtn/clearLogBtn OutlinedButton; logLevel/logScroll/logView
      pindahan Task 1 tetap.
-     Kerangka 1/7 tetap: MaterialToolbar → FrameLayout 4 halaman →
-     BottomNavigationView (navHome/navSesi/navLog/navSetelan). -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+     Kerangka 1/7: 4 halaman → BottomNavigationView
+     (navHome/navSesi/navLog/navSetelan).
+     Fase 2: root jadi FrameLayout; navbar = pill melayang Expressive
+     (FloatingToolbarLayout + BNV transparan 64dp) di bottom center.
+     Fix pill: konten scroll lewat DI BELAKANG pill sampai tepi bawah
+     layar - scroll container pakai clipToPadding=false + clearance bawah
+     dinamis (token 104dp + inset nav dari listener rootMain); TIDAK ada
+     strip/latar solid di belakang pill, hanya pill itu sendiri yang
+     berwarna (translucent 90% + elevation lib 6dp). Inset tetap SEKALI
+     di listener rootMain.
+     Hotfix: MaterialToolbar placeholder (56dp, judul saja, tanpa id &
+     tanpa rujukan Java) DIHAPUS - navigasi sudah ditangani bottom nav.
+     Konten pertama kini mulai 12dp di bawah status bar (inset system
+     bars diterapkan SEKALI di listener rootMain, MainActivity). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/rootMain"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <!-- Top bar -->
-    <com.google.android.material.appbar.MaterialToolbar
-        style="@style/Widget.Material3.Toolbar.OnSurface"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:title="wpmulti-test" />
-
-    <!-- Page container -->
+    <!-- Page container: mengisi seluruh frame SAMPAI TEPI BAWAH layar;
+         pill navbar melayang DI ATAS konten (bottom|center). Scroll
+         container halaman pakai clipToPadding=false + clearance bawah
+         supaya konten lewat DI BELAKANG pill saat discroll (item
+         terakhir tetap bisa digeser ke atas pill). -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="match_parent">
 
         <!-- PAGE: HOME (hero + kartu VPN + kartu Monitor) — semua ID
              tetap ada untuk MainActivity. -->
@@ -47,7 +54,11 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp">
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -64,6 +75,7 @@
                         android:orientation="vertical">
 
                         <TextView android:id="@+id/statusBar"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="BERHENTI"
@@ -71,10 +83,12 @@
                             android:drawablePadding="8dp"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            android:letterSpacing="0.12"
                             android:gravity="center"
                             android:textColor="?attr/colorOnPrimaryContainer" />
 
                         <TextView android:id="@+id/monGo"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -82,6 +96,20 @@
                             android:textSize="13sp"
                             android:gravity="center"
                             android:textColor="?attr/colorOnPrimaryContainer" />
+
+                        <!-- Fase 4: LoadingIndicator (widget Expressive
+                             material 1.14.0) saat MEMULAI/MENGHENTIKAN;
+                             visibility diatur dari Java. -->
+                        <com.google.android.material.loadingindicator.LoadingIndicator
+                            android:id="@+id/heroLoading"
+                            style="@style/Widget.Material3.LoadingIndicator"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:layout_marginTop="8dp"
+                            android:visibility="gone"
+                            app:indicatorColor="?attr/colorOnPrimaryContainer"
+                            app:indicatorSize="24dp" />
 
                         <Button android:id="@+id/btnEngine"
                             style="@style/Widget.Material3.Button"
@@ -97,6 +125,17 @@
                             app:iconTint="?attr/colorOnPrimary" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- Glitchcore: pembatas scanline dashed (cyan 30%) -
+                     penanda ritme HUD antara hero dan kartu VPN; 2dp agar
+                     dash di tengah bounds tidak terpotong, software layer
+                     demi render dash konsisten di hardware accel. -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
 
                 <!-- KARTU VPN (TUN) -->
                 <com.google.android.material.card.MaterialCardView
@@ -123,17 +162,20 @@
                             android:textColor="?attr/colorOnSurfaceVariant" />
 
                         <TextView android:id="@+id/vpnStatus"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="12dp"
                             android:text="VPN (TUN): tidak dipakai"
                             android:textSize="14sp" />
                         <TextView android:id="@+id/vpnStats"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
                             android:text=""
-                            android:textSize="13sp" />
+                            android:textSize="13sp"
+                            android:visibility="gone" />
 
                         <Button android:id="@+id/vpnToggleBtn"
                             style="@style/Widget.Material3.Button.TonalButton"
@@ -152,13 +194,23 @@
                             android:layout_marginTop="8dp"
                             android:text="TEST PING" />
                         <TextView android:id="@+id/pingResult"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:text=""
-                            android:textSize="13sp" />
+                            android:textSize="13sp"
+                            android:visibility="gone" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- Glitchcore: scanline kedua (VPN -> Monitor) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
 
                 <!-- KARTU MONITOR: grafik dulu, baru angka (komposisi baru) -->
                 <com.google.android.material.card.MaterialCardView
@@ -183,6 +235,7 @@
                             android:layout_height="120dp"
                             android:layout_marginTop="8dp" />
                         <TextView android:id="@+id/headerStats"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_gravity="end"
@@ -191,18 +244,83 @@
                             android:textSize="12sp"
                             android:textColor="?attr/colorOnSurfaceVariant" />
 
+                        <!-- Fase 3: throughput = angka besar (TitleLarge)
+                             + total kecil, per arah (RX kiri, TX kanan).
+                             Pengganti baris teks panjang "sesi aktif: N |
+                             TX 0 B (0 B/s) | RX ..." yang terpotong di
+                             grid lama. -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="8dp">
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="RX (turun)"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                                <TextView android:id="@+id/monRx"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="-"
+                                    android:fontFamily="monospace"
+                                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+                                <TextView android:id="@+id/monRxTotal"
+                                    android:fontFamily="monospace"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="total -"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:layout_marginStart="8dp">
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="TX (naik)"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                                <TextView android:id="@+id/monTx"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="-"
+                                    android:fontFamily="monospace"
+                                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+                                <TextView android:id="@+id/monTxTotal"
+                                    android:fontFamily="monospace"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="total -"
+                                    android:textSize="12sp"
+                                    android:textColor="?attr/colorOnSurfaceVariant" />
+                            </LinearLayout>
+                        </LinearLayout>
+
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:layout_marginTop="8dp">
                             <TextView android:id="@+id/monRam"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="RAM: -"
                                 android:textSize="14sp" />
                             <TextView android:id="@+id/monCpu"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
@@ -215,12 +333,14 @@
                             android:orientation="horizontal"
                             android:layout_marginTop="4dp">
                             <TextView android:id="@+id/monCache"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="Cache: -"
                                 android:textSize="14sp" />
                             <TextView android:id="@+id/monSesi"
+                                android:fontFamily="monospace"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
@@ -228,12 +348,16 @@
                                 android:textSize="14sp" />
                         </LinearLayout>
 
-                        <TextView android:id="@+id/monSesiDetail"
+                        <!-- Fase 3: daftar sesi jadi CHIP (dot warna status
+                             + detail saat disentuh) - pengganti satu TextView
+                             monospace "#0 hs=- tx=0 B rx=0 B" per sesi yang
+                             teksnya menumpuk & terpotong. Isi diatur Java
+                             (rebuildSessionChips, update in-place). -->
+                        <LinearLayout android:id="@+id/monSesiDetail"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:textSize="12sp"
-                            android:typeface="monospace" />
+                            android:orientation="vertical"
+                            android:layout_marginTop="8dp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
@@ -245,7 +369,11 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
@@ -268,6 +396,7 @@
                             android:text="Profil Config"
                             android:textAppearance="?attr/textAppearanceTitleMedium" />
                         <TextView android:id="@+id/totalView"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -293,6 +422,14 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- Glitchcore: scanline ketiga (Profil -> Proxy) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
+
                 <!-- KARTU PROXY -->
                 <com.google.android.material.card.MaterialCardView
                     style="@style/Widget.Wpmulti.Card"
@@ -315,6 +452,7 @@
                             android:orientation="vertical"
                             android:paddingTop="8dp" />
                         <TextView android:id="@+id/proxyStatus"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
@@ -322,6 +460,14 @@
                             android:textSize="14sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+
+                <!-- Glitchcore: scanline keempat (Proxy -> Uji Proxy) -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/divider_scanline"
+                    android:layerType="software" />
 
                 <!-- KARTU UJI PROXY -->
                 <com.google.android.material.card.MaterialCardView
@@ -372,12 +518,14 @@
                                 android:text="TEST 20x" />
                         </LinearLayout>
                         <TextView android:id="@+id/testResult"
+                            android:fontFamily="monospace"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:text=""
                             android:textSize="13sp" />
                         <TextView android:id="@+id/verifyView"
+                            android:fontFamily="monospace"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
@@ -388,13 +536,27 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- PAGE: LOG -->
+        <!-- PAGE: LOG - clearance bawah pindah ke logScroll (scroll
+             container dalam) supaya baris log terakhir lewat di belakang
+             pill; container luar tidak lagi memotong area konten. -->
         <LinearLayout android:id="@+id/pageLog"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="12dp"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
             android:visibility="gone">
+
+            <!-- Glitchcore: scanline header log -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/divider_scanline"
+                android:layerType="software" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -433,7 +595,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="8dp"
+                android:clipToPadding="false"
+                android:paddingBottom="@dimen/nav_pill_clearance">
                 <TextView android:id="@+id/logView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -453,7 +617,11 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:fillViewport="true"
-            android:padding="12dp"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="@dimen/nav_pill_clearance"
             android:visibility="gone">
             <LinearLayout
                 android:layout_width="match_parent"
@@ -677,12 +845,65 @@
 
     </FrameLayout>
 
-    <!-- Bottom navigation: 4 tab -->
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNav"
-        android:layout_width="match_parent"
+    <!-- Glitchcore: HUD notifikasi in-app (pengganti Toast sistem yang
+         tampil sbg box abu-abu gelap default tepat di atas pill).
+         Monospace + caps + stroke neon; margin bawah dihitung listener
+         rootMain = inset nav + 96dp (tepat di atas pill). -->
+    <TextView android:id="@+id/hudToast"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:menu="@menu/bottom_nav"
-        app:labelVisibilityMode="labeled" />
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="96dp"
+        android:background="@drawable/bg_hud"
+        android:elevation="8dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.08"
+        android:maxLines="3"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/glitch_white"
+        android:textSize="13sp"
+        android:visibility="gone" />
 
-</LinearLayout>
+    <!-- Navbar pill melayang (M3 Expressive): FloatingToolbarLayout dari
+         material 1.14.0 - container pill full-round (ShapeAppearance.M3.
+         Comp.Toolbar.Floating.Container.Shape = Corner.Full 50%, referensi
+         style tetap lib, TIDAK terpengaruh remap shapeCornerSize* tema).
+         Fix: TIDAK ada strip/latar di belakang pill - hanya pill itu
+         sendiri yang berwarna, sedikit translucent (nav_pill_container)
+         + elevation lib 6dp sebagai shadow lembut; konten halaman lewat
+         di belakangnya sampai tepi bawah layar. Margin bawah base 12dp
+         ditimpa listener rootMain = inset nav + 4dp (aman gesture nav).
+         CATATAN inset: listener rootMain mengembalikan CONSUMED sehingga
+         attr *SystemWindowInsets milik lib no-op; inset sepenuhnya di
+         listener rootMain (bukan lib). -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/navPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="12dp"
+        app:cardCornerRadius="32dp"
+        app:cardElevation="6dp"
+        app:strokeWidth="0dp"
+        app:cardBackgroundColor="@color/nav_pill_container">
+
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            style="@style/Widget.Wpmulti.Nav"
+            android:id="@+id/bottomNav"
+            android:layout_width="wrap_content"
+            android:layout_height="64dp"
+            android:background="@android:color/transparent"
+            app:backgroundTint="@android:color/transparent"
+            app:elevation="0dp"
+            app:menu="@menu/bottom_nav"
+            app:labelVisibilityMode="labeled" />
+    </com.google.android.material.card.MaterialCardView>
+
+</FrameLayout>
