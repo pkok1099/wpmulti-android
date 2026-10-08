@@ -2,6 +2,17 @@
 
 > **Status: IMPLEMENTED** (fase cy8, branch `ui/floating-nav`)
 
+## Patch cy8.1 (bug lapangan: "seluruh dropdown tidak muncul")
+
+Setelah pengujian di device: SEMUA dropdown tidak muncul (tanpa crash). Akar
+masalah: `GlitchDropdown.show()` tidak pernah memanggil `pw.setContentView(lv)`
+— guard `mContentView == null` di AOSP membuat `showAsDropDown()`/`showAtLocation()`
+no-op senyap, sementara `OnTouchListener` Spinner sudah mengonsumsi sentuhan
+(popup platform juga tidak terbuka). Fix: `setContentView(lv)` + `setWidth(w)`
++ `setHeight(h)` sebelum show (tinggi ukur ter-cap 280dp; WRAP_CONTENT fallback).
+Bonus: selector default item dipertahankan saat efek mati (feedback pilihan =
+fungsional, bukan dekorasi). Validasi: assembleDebug + assembleRelease OK.
+
 **Goal:** Glitch terasa sebagai **mekanisme bagaimana UI berubah**, bukan animasi dekoratif yang sesekali muncul. Prinsip: «Sesuatu yang berubah → sesuatu itulah yang mengalami glitch. Bukan seluruh UI.» Frekuensi event = TINGGI, visual noise = RENDAH, target = EKSPLISIT.
 
 **Spec:** Permintaan user: perbaiki implementasi glitch existing — jangan hanya menambah variasi; masalah: glitch jarang, timing kurang tepat, beberapa efek kena area terlalu besar, ada artifact kotak di floating navbar, dropdown/dialog masih terasa UI Android biasa, page transition masih "shake + tiny glitch".
