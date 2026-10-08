@@ -3,7 +3,6 @@ package com.wpmulti.test;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
-import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -27,9 +26,6 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
-import androidx.dynamicanimation.animation.DynamicAnimation;
-import androidx.dynamicanimation.animation.SpringAnimation;
-import androidx.dynamicanimation.animation.SpringForce;
 import com.google.android.material.shape.MaterialShapeDrawable;
 import com.google.android.material.shape.ShapeAppearanceModel;
 
@@ -135,8 +131,12 @@ public class MainActivity extends AppCompatActivity {
     private Spinner logLevel;
     // Fase 4: elemen hidup - LoadingIndicator transisi, denyut dot
     // status RUNNING, morph sudut tombol START<->STOP, bounce spring.
+    // cy9: penggerak = SelfAnim (Choreographer sendiri), bukan
+    // ValueAnimator/SpringAnimation sistem -> tetap jalan walau skala
+    // animator sistem = 0; keputusan efek = GlitchText.isGlitchEnabled().
     private View heroLoading;
-    private ValueAnimator dotPulse;
+    private SelfAnim.Token dotPulse;
+    private SelfAnim.Token morphAnim, bounceAnim;
     // guard bounce: dulu bounce terpicu walau state tidak berubah
     // (setEngineState redundan dari rebuildConfigRows dll) - sekarang
     // fx hanya jalan saat state benar-benar berubah.
@@ -359,24 +359,24 @@ public class MainActivity extends AppCompatActivity {
     // status bar 255 <-> ~90, 900ms bolak-balik. Dibatalkan di state
     // lain dan di onPause (hemat CPU/baterai; dulu jalan terus walau
     // activity tidak terlihat); dinyalakan lagi di onResume.
+    // cy9: penggerak = SelfAnim.pulse (Choreographer sendiri) dengan
+    // kurva & nilai IDENTIK ValueAnimator.ofFloat(1f,0.35f) 900ms
+    // REVERSE INFINITE lama - jalan walau animator scale sistem = 0;
+    // keputusan aktif = GlitchText.isGlitchEnabled() (satu pusat).
     private void updateDotPulse(int st) {
-        if (st != ST_RUNNING) {
+        if (st != ST_RUNNING || !GlitchText.isGlitchEnabled()) {
             stopDotPulse();
             return;
         }
         if (dotPulse != null) return; // sudah berdenyut
-        if (animScale() <= 0f) return; // hormati "hapus animasi"
         android.graphics.drawable.Drawable[] ca =
                 statusBar.getCompoundDrawablesRelative();
         if (ca == null || ca.length < 1 || ca[0] == null) return;
         final android.graphics.drawable.Drawable dot = ca[0].mutate();
-        dotPulse = ValueAnimator.ofFloat(1f, 0.35f);
-        dotPulse.setDuration(900);
-        dotPulse.setRepeatCount(ValueAnimator.INFINITE);
-        dotPulse.setRepeatMode(ValueAnimator.REVERSE);
-        dotPulse.addUpdateListener(a -> dot.setAlpha(
-                Math.round((Float) a.getAnimatedValue() * 255f)));
-        dotPulse.start();
+        // fraksi arah p: v = 1 - 0.65*ease(p) == interpolasi 1f -> 0.35f
+        // (AccelerateDecelerate) yang dibalik tiap setengah-periode.
+        dotPulse = SelfAnim.pulse(900, p -> dot.setAlpha(Math.round(
+                (1f - 0.65f * SelfAnim.ease(p)) * 255f)));
     }
 
     private void stopDotPulse() {
@@ -393,11 +393,14 @@ public class MainActivity extends AppCompatActivity {
 
     // Morph sudut tombol START<->STOP via MaterialShapeDrawable (lapisan
     // 0 dari RippleDrawable bawaan MaterialButton): START = sudut tegas
-    // token large (8dp), STOP = pill (tinggi aktual / 2). Dihormati
-    // animScale; fallback diam + log sekali bila background bukan
-    // MaterialShapeDrawable - fitur dekoratif tidak boleh crash.
+    // token large (8dp), STOP = pill (tinggi aktual / 2). cy9: penggerak
+    // = SelfAnim.ofDuration (Choreographer sendiri), kurva
+    // AccelerateDecelerate & 260ms IDENTIK ValueAnimator lama - jalan
+    // walau animator scale sistem = 0; fallback diam + log sekali bila
+    // background bukan MaterialShapeDrawable - fitur dekoratif tidak
+    // boleh crash.
     private void morphEngineButton(final MaterialButton btn, int st) {
-        if (animScale() <= 0f) return;
+        if (!GlitchText.isGlitchEnabled()) return;
         try {
             android.graphics.drawable.Drawable bg = btn.getBackground();
             MaterialShapeDrawable msd = null;
@@ -426,16 +429,14 @@ public class MainActivity extends AppCompatActivity {
                     : 8 * getResources().getDisplayMetrics().density;
             // lambda butuh effectively-final (msd di-reassign di atas)
             final MaterialShapeDrawable msdF = msd;
-            ValueAnimator va = ValueAnimator.ofFloat(from, target);
-            va.setDuration(260);
-            va.addUpdateListener(a -> {
-                float r = (Float) a.getAnimatedValue();
+            if (morphAnim != null) morphAnim.cancel(); // morph baru ganti lama
+            morphAnim = SelfAnim.ofDuration(260, t -> {
+                float r = from + (target - from) * SelfAnim.ease(t);
                 msdF.setShapeAppearanceModel(
                         ShapeAppearanceModel.builder()
                                 .setAllCornerSizes(r)
                                 .build());
             });
-            va.start();
         } catch (Exception e) {
             if (!msdWarned) {
                 msdWarned = true;
@@ -445,24 +446,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // Bounce spring halus saat tombol kembali aktif (state berubah).
-    // Di-guard animScale; dipicu hanya dari jalur fxChanged.
+    // Dipicu hanya dari jalur fxChanged. cy9: penggerak = SelfAnim.spring
+    // (Choreographer sendiri) - parameter IDENTIK SpringAnimation lama
+    // (stiffness 200 = STIFFNESS_LOW, dampingRatio 0.5 =
+    // DAMPING_RATIO_MEDIUM_BOUNCY, 0.92 -> 1.0, minVisible 1/500 utk
+    // scale), berakhir PASTI di 1.0 - jalan walau animator scale = 0.
     // FIX crash "Final position of the spring cannot be greater than the
-    // max value": SpringForce() tanpa setFinalPosition memakai default
-    // Double.MAX_VALUE (AAR dynamicanimation 1.1.0, terverifikasi via
-    // javap); setSpring(f) menimpa SpringForce(1f) dari konstruktor, lalu
-    // (float) Double.MAX_VALUE = +Infinity -> sanityCheck() melempar.
-    // Final position kini eksplisit di SpringForce; try/catch meniru morph
-    // (fitur hidup tidak boleh crash).
+    // max value": kini tidak relevan (tidak ada SpringForce sistem),
+    // try/catch meniru morph (fitur hidup tidak boleh crash).
     private void bounceEngine(final MaterialButton btn) {
-        if (animScale() <= 0f) return;
+        if (!GlitchText.isGlitchEnabled()) return;
         try {
-            SpringForce f = new SpringForce(1f)
-                    .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
-                    .setStiffness(SpringForce.STIFFNESS_LOW);
-            new SpringAnimation(btn, DynamicAnimation.SCALE_X, 1f)
-                    .setSpring(f).setStartValue(0.92f).start();
-            new SpringAnimation(btn, DynamicAnimation.SCALE_Y, 1f)
-                    .setSpring(f).setStartValue(0.92f).start();
+            if (bounceAnim != null) bounceAnim.cancel();
+            bounceAnim = SelfAnim.spring(0.92f, 1f, 200f, 0.5f,
+                    1f / 500f, v -> {
+                        btn.setScaleX(v);
+                        btn.setScaleY(v);
+                    });
         } catch (Exception e) {
             if (!bounceWarned) {
                 bounceWarned = true;
@@ -478,8 +478,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean pageShownOnce = false;
 
     // Skala animator global (Setelan developer > skala animasi; 0 =
-    // "hapus animasi"): 0 -> animasi UI dilewati, langsung state final.
-    // Fallback 1f bila key tidak tersedia.
+    // "hapus animasi"): HANYA dipakai mode efek AUTO ("ikuti sistem")
+    // via GlitchText.setAnimScale - mode Selalu aktif / Mati tidak
+    // membacanya. Fallback 1f bila key tidak tersedia.
     private float animScale() {
         // cy7: skala EFEKTIF = minimum dari TIGA skala animasi sistem -
         // "Remove animations" (aksesibilitas) menset semuanya 0; window/
@@ -2284,6 +2285,43 @@ public class MainActivity extends AppCompatActivity {
             }
             public void onNothingSelected(android.widget.AdapterView<?> p) {}
         });
+
+        // cy9: MODE EFEK GLITCH (Auto / Selalu aktif / Mati) di halaman
+        // Setelan. Default: Selalu aktif - glitch tetap jalan walau skala
+        // animator sistem = 0 (semua penggerak waktu efek sudah
+        // Handler/Choreographer sendiri, hasil visual tidak berubah).
+        // Satu fungsi pusat GlitchText.isGlitchEnabled() dipakai SEMUA
+        // efek; glitch hanya lapisan visual - state UI & input normal.
+        Spinner glitchModeSp = findViewById(R.id.glitchMode);
+        ArrayAdapter<String> gmAd = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item,
+                new String[]{"Auto (ikuti sistem)", "Selalu aktif", "Mati"});
+        gmAd.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        glitchModeSp.setAdapter(gmAd);
+        int gmode = getSharedPreferences("ui", MODE_PRIVATE)
+                .getInt("glitch_mode", GlitchText.MODE_ALWAYS_ON);
+        GlitchText.setMode(gmode);
+        glitchModeSp.setSelection(gmode == GlitchText.MODE_AUTO ? 0
+                : gmode == GlitchText.MODE_OFF ? 2 : 1);
+        glitchModeSp.setOnItemSelectedListener(
+                new android.widget.AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(android.widget.AdapterView<?> p,
+                                       View v, int pos, long id) {
+                int m = pos == 0 ? GlitchText.MODE_AUTO
+                        : pos == 2 ? GlitchText.MODE_OFF
+                        : GlitchText.MODE_ALWAYS_ON;
+                if (m == GlitchText.getMode()) return; // pilihan awal: no-op
+                getSharedPreferences("ui", MODE_PRIVATE).edit()
+                        .putInt("glitch_mode", m).apply();
+                GlitchText.setMode(m);
+                // denyut dot status ikut mode (mulai/berhenti seketika);
+                // morph/bounce pendek self-terminating & berakhir di nilai
+                // final - tidak ada state tertinggal saat pindah mode.
+                updateDotPulse(engineState);
+            }
+            public void onNothingSelected(android.widget.AdapterView<?> p) {}
+        });
+
         logFilter.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             public void onTextChanged(CharSequence s, int a, int b, int c) {}
@@ -2547,8 +2585,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // cy6: hormati skala animator sistem (0 = "hapus animasi") -
-        // seluruh glitch dimatikan utk aksesibilitas.
+        // cy9: skala animator sistem hanya berpengaruh pada mode AUTO
+        // ("ikuti sistem"); mode Selalu aktif (default) tetap menjalankan
+        // glitch walau skala 0 - semua penggerak waktu efek adalah
+        // Handler/Choreographer sendiri (step()/SelfAnim).
         GlitchText.setAnimScale(animScale());
         // Task 32: nyalakan lagi wander glitch (registry dipertahankan;
         // ref mati di-purge di dalam start()).

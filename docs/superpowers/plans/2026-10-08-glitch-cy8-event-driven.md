@@ -2,6 +2,39 @@
 
 > **Status: IMPLEMENTED** (fase cy8, branch `ui/floating-nav`)
 
+## Patch cy9 — glitch jalan walau animator scale sistem = 0 + mode efek di Settings
+
+Permintaan: tampilan/durasi/intensitas/target glitch TIDAK boleh berubah; satu-satunya
+perubahan = glitch tetap muncul walau pengguna memakai animator scale = 0.
+
+- **Akar masalah**: `GlitchText.fxAllowed()` = `running && sAnimScale > 0f` — gerbang
+  tunggal yang mematikan SEMUA efek saat skala animator sistem 0 (efeknya sendiri
+  sudah ber-Handler `step()`, tidak butuh Animator sistem). Tiga efek lain di
+  MainActivity memang memakai Animator sistem: `dotPulse` (ValueAnimator 900ms
+  REVERSE INFINITE), `morphEngineButton` (ValueAnimator 260ms), `bounceEngine`
+  (SpringAnimation ×2) — ketiganya juga digerbang `animScale() <= 0`.
+- **Solusi**: sistem mode `MODE_AUTO / MODE_ALWAYS_ON (DEFAULT) / MODE_OFF` +
+  **SATU fungsi pusat `GlitchText.isGlitchEnabled()`** yang dipakai semua efek
+  (GlitchText, GlitchDropdown, dot/morph/bounce). ALWAYS_ON tidak membaca skala
+  animator sama sekali.
+- **SelfAnim.java (baru)**: penggerak mini ber-Choreographer — `ease()` = rumus persis
+  AccelerateDecelerateInterpolator, `ofDuration()` (padanan ValueAnimator satu-kali),
+  `pulse()` (padanan REVERSE+INFINITE), `spring()` (solusi spring underdamped
+  bentuk-tertutup, parameter identik SpringAnimation: stiffness 200, damping 0.5,
+  minVisible 1/500, berakhir PASTI di nilai final). dotPulse/morph/bounce dikonversi
+  ke sini — durasi/kurva/nilai IDENTIK, jadi hasil visual tidak berubah.
+- **Settings**: kartu "Tampilan" di halaman Setelan — spinner "Efek glitch":
+  Auto (ikuti sistem) / Selalu aktif / Mati. Persist `SharedPreferences("ui")
+  .glitch_mode`, default ALWAYS_ON.
+- **Kebersihan state**: `setMode(OFF)` di tengah efek → `purgeEffects()` membatalkan
+  langkah tertunda dari handler, memulihkan baseline {alpha,tx,scaleX,elevation},
+  melepas scanline overlay + span input, restore teks/shadow — tidak ada sisa.
+  Loop wander tetap hidup (mode bisa diubah lagi tanpa resume ulang).
+- **Non-regresi**: input tidak pernah diblokir (glitch murni lapisan visual, state
+  UI berubah seketika); logView tetap 100% bebas glitch; animScale() tetap dibaca
+  di onResume tapi hanya memberi makan mode AUTO.
+- Validasi: `assembleDebug` ✓ + `assembleRelease` ✓ (R8).
+
 ## Patch cy8.1 (bug lapangan: "seluruh dropdown tidak muncul")
 
 Setelah pengujian di device: SEMUA dropdown tidak muncul (tanpa crash). Akar

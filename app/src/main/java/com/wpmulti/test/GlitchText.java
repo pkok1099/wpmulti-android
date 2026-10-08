@@ -77,9 +77,19 @@ import java.util.WeakHashMap;
  *     MAJOR yang dulu pakai postDelayed liar kini ikut framework
  *     (cancelFor/stop memulihkan SEMUA state).
  *
+ *  7. MODE EFEK (cy9): isGlitchEnabled() = SATU fungsi pusat keputusan
+ *     utk SEMUA efek (glitch + elemen hidup app). Mode: AUTO (ikut
+ *     skala animator sistem - perilaku lama), ALWAYS_ON (DEFAULT -
+ *     efek tetap jalan walau animator scale sistem = 0, karena SEMUA
+ *     penggerak waktu efek adalah Handler/Choreographer sendiri, bukan
+ *     Animator sistem), OFF (mati total; state UI tetap berubah normal).
+ *     Beralih ke OFF membersihkan semua alpha/transform/shadow/overlay.
+ *
  * logView 100% BERSIH (walk/collect/burst/fragmen melewatinya).
- * Aksesibilitas: setAnimScale(0) mematikan SEMUA efek dan semua jalur
- * berakhir langsung di state final tanpa alpha/transform/shadow nyangkut.
+ * Aksesibilitas: mode OFF (atau AUTO saat animator sistem 0) mematikan
+ * SEMUA efek dan semua jalur berakhir langsung di state final tanpa
+ * alpha/transform/shadow nyangkut; mode ALWAYS_ON sengaja TIDAK membaca
+ * skala animator sistem (itulah tujuannya).
  */
 public final class GlitchText {
 
@@ -91,18 +101,56 @@ public final class GlitchText {
     /** Besar: page navigation, state engine, rekonstruksi list besar. */
     public static final int MAJOR = 2;
 
-    /** Skala animator sistem (0 = "hapus animasi" -> semua efek mati). */
+    // ---------------- mode efek (cy9) ----------------
+
+    /** Auto: ikuti skala animator sistem (aktif hanya bila > 0). */
+    public static final int MODE_AUTO = 0;
+    /** Selalu aktif (DEFAULT): efek jalan walau animator scale sistem 0. */
+    public static final int MODE_ALWAYS_ON = 1;
+    /** Mati: tanpa efek; UI tetap berfungsi & state tetap berubah. */
+    public static final int MODE_OFF = 2;
+
+    private static volatile int sMode = MODE_ALWAYS_ON;
+
+    /** Skala animator sistem - HANYA dipakai mode MODE_AUTO. */
     private static volatile float sAnimScale = 1f;
 
-    /** Set skala animator dari activity (onResume). 0 = nonaktif total. */
+    /**
+     * Set skala animator sistem dari activity (onResume) - hanya
+     * berpengaruh pada mode MODE_AUTO ("ikuti sistem").
+     */
     public static void setAnimScale(float scale) { sAnimScale = scale; }
 
-    private static boolean fxAllowed() {
-        return running && sAnimScale > 0f;
+    /**
+     * Mode efek: MODE_AUTO / MODE_ALWAYS_ON / MODE_OFF. Beralih ke OFF
+     * di tengah efek membersihkan SEMUA state visual (alpha/transform/
+     * shadow/overlay) - tidak ada yang tertinggal. Idempotent.
+     */
+    public static void setMode(int mode) {
+        int m = mode == MODE_AUTO || mode == MODE_OFF ? mode : MODE_ALWAYS_ON;
+        if (sMode == m) return;
+        sMode = m;
+        if (m == MODE_OFF) purgeEffects();
     }
 
-    /** Aksesibilitas utk GlitchDropdown: efek boleh jalan? */
-    public static boolean isFxAllowed() { return fxAllowed(); }
+    public static int getMode() { return sMode; }
+
+    /**
+     * SATU FUNGSI PUSAT yang menentukan aktif/tidaknya SEMUA efek
+     * (GlitchText, GlitchDropdown, elemen hidup MainActivity):
+     *  - MODE_OFF       -> false (UI tetap normal, state tetap berubah,
+     *    glitch hanya lapisan visual - tidak pernah memblokir input)
+     *  - MODE_ALWAYS_ON -> true WALAU skala animator sistem = 0: semua
+     *    penggerak waktu efek adalah Handler/Choreographer sendiri
+     *    (SelfAnim), bukan Animator sistem, jadi "hapus animasi" sistem
+     *    tidak mematikannya
+     *  - MODE_AUTO      -> ikuti sistem (skala animator > 0 = aktif)
+     */
+    public static boolean isGlitchEnabled() {
+        if (!running || sMode == MODE_OFF) return false;
+        if (sMode == MODE_ALWAYS_ON) return true;
+        return sAnimScale > 0f;
+    }
 
     /** Random int [0,bound) utk komponen pendamping (pulse dropdown). */
     public static int rndInt(int bound) { return RND.nextInt(bound); }
@@ -415,7 +463,7 @@ public final class GlitchText {
 
     /** Glitch sekali pada satu TextView dengan level intensitas. */
     public static void glitchNow(TextView tv, int level) {
-        if (tv == null || !fxAllowed()) return;
+        if (tv == null || !isGlitchEnabled()) return;
         markEvent();
         Node n = findNode(tv);
         if (n != null) {
@@ -453,7 +501,7 @@ public final class GlitchText {
      * menentukan root sekecil mungkin (elemen yang berubah, bukan layar).
      */
     public static void glitchTree(View root, int level) {
-        if (root == null || !fxAllowed()) return;
+        if (root == null || !isGlitchEnabled()) return;
         markEvent();
         ArrayList<Node> targets = new ArrayList<>();
         collect(root, targets);
@@ -468,7 +516,7 @@ public final class GlitchText {
      * engine, rekonstruksi list) - BUKAN event kecil.
      */
     public static void glitchMajor(View root) {
-        if (root == null || !fxAllowed()) return;
+        if (root == null || !isGlitchEnabled()) return;
         glitchTree(root, MAJOR);
         glitchJitter(root, MAJOR);
     }
@@ -480,7 +528,7 @@ public final class GlitchText {
      * meninggalkan artifact kotak. Rantai berakhir PASTI di baseline.
      */
     public static void glitchView(View v, int level) {
-        if (v == null || !fxAllowed()) return;
+        if (v == null || !isGlitchEnabled()) return;
         markEvent();
         v.animate().cancel();
         guardElevation(v);
@@ -513,7 +561,7 @@ public final class GlitchText {
      * baseline (tidak ada layout shift, tidak ada state nyangkut).
      */
     public static void glitchJitter(View v, int level) {
-        if (v == null || !fxAllowed()) return;
+        if (v == null || !isGlitchEnabled()) return;
         markEvent();
         float d = DENSITY;
         float amp = level == MAJOR ? 3.5f : level == MEDIUM ? 2f : 1f;
@@ -541,7 +589,7 @@ public final class GlitchText {
      * Berakhir PASTI di alpha/scale/elevation baseline.
      */
     public static void glitchAppear(View v) {
-        if (v == null || !fxAllowed()) return;
+        if (v == null || !isGlitchEnabled()) return;
         markEvent();
         glitchTree(v, MEDIUM);
         v.animate().cancel();
@@ -562,7 +610,7 @@ public final class GlitchText {
      * terbaru) - API ini sendiri tidak mengubah visibility.
      */
     public static void glitchDisappear(View v) {
-        if (v == null || !fxAllowed()) return;
+        if (v == null || !isGlitchEnabled()) return;
         markEvent();
         glitchTree(v, MINOR);
         v.animate().cancel();
@@ -581,7 +629,7 @@ public final class GlitchText {
      * corrupt -> state baru (bukan sebaliknya).
      */
     public static void glitchStateChange(View v, boolean enabled) {
-        if (v == null || !fxAllowed()) return;
+        if (v == null || !isGlitchEnabled()) return;
         markEvent();
         glitchView(v, enabled ? MEDIUM : MINOR);
         if (v instanceof TextView) {
@@ -599,7 +647,7 @@ public final class GlitchText {
      * Elevation tiap anak dijaga (guard kotak).
      */
     public static void materializeStaggered(ViewGroup g) {
-        if (g == null || !fxAllowed()) return;
+        if (g == null || !isGlitchEnabled()) return;
         markEvent();
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
@@ -621,7 +669,7 @@ public final class GlitchText {
      * kesan "element pecah jadi fragment lalu hilang".
      */
     public static void vanishStaggered(ViewGroup g) {
-        if (g == null || !fxAllowed()) return;
+        if (g == null || !isGlitchEnabled()) return;
         markEvent();
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
@@ -640,7 +688,7 @@ public final class GlitchText {
      * Mengembalikan true bila ada anak yang dikenai efek.
      */
     public static boolean dropdownPulse(ViewGroup g) {
-        if (g == null || !fxAllowed()) return false;
+        if (g == null || !isGlitchEnabled()) return false;
         ArrayList<View> vis = new ArrayList<>();
         for (int i = 0; i < g.getChildCount(); i++) {
             View c = g.getChildAt(i);
@@ -681,7 +729,7 @@ public final class GlitchText {
 
     /** Scanline dengan alpha garis khusus (0-255). */
     public static void scanline(View host, int durationMs, int lineAlpha) {
-        if (host == null || !fxAllowed()) return;
+        if (host == null || !isGlitchEnabled()) return;
         clearScanline(host); // idempotent - tidak menumpuk
         int w = host.getWidth();
         int h = host.getHeight();
@@ -813,7 +861,7 @@ public final class GlitchText {
         // Status visibility: in sudah VISIBLE oleh pemanggil; out masih
         // VISIBLE - penyembunyiannya MILIK transisi ini (setelah fase
         // korupsi). Di luar efek, hanya jamin state final bersih.
-        if (!fxAllowed()) {
+        if (!isGlitchEnabled()) {
             out.setVisibility(View.GONE);
             resetFrags(fragments(out));
             resetFrags(fragments(in));
@@ -995,6 +1043,44 @@ public final class GlitchText {
         restoreAllBase();
     }
 
+    /**
+     * Mode berubah ke OFF di tengah efek berjalan (cy9): batalkan semua
+     * langkah tertunda + pulihkan baseline + lepas overlay/span kilat -
+     * deterministik, TIDAK ADA alpha/transform/shadow/overlay yang
+     * tertinggal. Berbeda dari stop(): loop wander (TICK) tetap hidup,
+     * hanya berhenti berefek (cek isGlitchEnabled di dalamnya) sehingga
+     * mode bisa diaktifkan lagi tanpa onResume ulang.
+     */
+    private static void purgeEffects() {
+        // 1. hapus langkah tertunda dari handler SEBELUM restore
+        //    (jangan hanya bersihkan map - runnable yang masih antre
+        //    bisa memutasikan view SETELAH restore -> state nyangkut).
+        try {
+            for (ArrayList<Runnable> list : POSTED.values()) {
+                if (list == null) continue;
+                for (Runnable r : list) H.removeCallbacks(r);
+            }
+        } catch (Exception ignored) {}
+        // 2. pulihkan {alpha, translationX, scaleX, ELEVATION} baseline
+        restoreAllBase();
+        // 3. scanline overlay (ViewOverlay) dilepas
+        try {
+            if (!SCANLINES.isEmpty()) {
+                ArrayList<View> hosts = new ArrayList<>(SCANLINES.keySet());
+                for (View v : hosts) clearScanline(v);
+            }
+        } catch (Exception ignored) {}
+        // 4. span korupsi input dilepas dari EditText aktif
+        try {
+            if (!INPUT_SPANS.isEmpty()) {
+                ArrayList<EditText> ets = new ArrayList<>(INPUT_SPANS.keySet());
+                for (EditText et : ets) clearInputSpans(et, true);
+            }
+        } catch (Exception ignored) {}
+        // 5. kilatan teks (span) & shadow RGB dipulihkan
+        restoreNow();
+    }
+
     private static void scheduleTick(long delay) {
         if (tickQueued) return;
         tickQueued = true;
@@ -1015,7 +1101,7 @@ public final class GlitchText {
             // ambient DIJEDA setelah event glitch - event adalah
             // bintangnya, ambient hanya atmosfer (1 target / 950-1500ms).
             long now = SystemClock.uptimeMillis();
-            if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && fxAllowed()) {
+            if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && isGlitchEnabled()) {
                 ArrayList<Node> alive = new ArrayList<>();
                 ArrayList<Node> aliveHot = new ArrayList<>();
                 for (Node n : NODES) {
@@ -1336,7 +1422,8 @@ public final class GlitchText {
      *                utk insert; "seam" sekitar posisi hapus utk deletion).
      *                Paste/replace besar (count > 3) = MEDIUM.
      * Throttle per-node 300ms + token bucket global mencegah stampede;
-     * sApplying mencegah loop; fxAllowed mencegah burst saat tak terlihat.
+     * sApplying mencegah loop; isGlitchEnabled mencegah burst saat efek
+     * mati (mode OFF) atau tak terlihat.
      */
     private static final class GlitchWatcher implements TextWatcher {
         private final Node node;
@@ -1348,11 +1435,11 @@ public final class GlitchText {
 
         @Override public void onTextChanged(
                 CharSequence s, int start, int before, int count) {
-            if (sApplying || !fxAllowed()) return;
+            if (sApplying || !isGlitchEnabled()) return;
             final int st = start, bf = before, ct = count;
             // Post ringan: biarkan layout selesai dulu baru glitch.
             H.postDelayed(() -> {
-                if (sApplying || !fxAllowed()) return;
+                if (sApplying || !isGlitchEnabled()) return;
                 TextView tv = node.ref.get();
                 if (tv == null) return;
                 boolean deletion = ct == 0 && bf > 0;

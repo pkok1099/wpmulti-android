@@ -42,8 +42,9 @@ import android.widget.Spinner;
  *
  * State tetap milik Spinner + adapter-nya (minimal-invasif): popup hanya
  * lapisan presentasi; nilai terpilih tetap dibaca dari Spinner. Tap
- * spinner lagi saat terbuka = toggle tutup. animScale 0 -> popup polos
- * tanpa efek (state tetap benar).
+ * spinner lagi saat terbuka = toggle tutup. Mode efek OFF / (AUTO +
+ * animator sistem 0) -> popup polos tanpa efek (state tetap benar).
+ * cy9: keputusan efek = GlitchText.isGlitchEnabled() (satu fungsi pusat).
  */
 final class GlitchDropdown {
 
@@ -63,7 +64,7 @@ final class GlitchDropdown {
             // tiap pulse ke-4: shimmer scanline tipis sesaat - dropdown
             // "bernapas" tanpa guncangan konstan.
             if (++sPulseCount % 4 == 0
-                    && GlitchText.isFxAllowed()) {
+                    && GlitchText.isGlitchEnabled()) {
                 GlitchText.scanline(sOpenList, 90, 70);
             }
             H.postDelayed(this, 380 + GlitchText.rndInt(270));
@@ -82,7 +83,7 @@ final class GlitchDropdown {
         }
         if (la == null || la.getCount() == 0) return;
 
-        final boolean fx = GlitchText.isFxAllowed();
+        final boolean fx = GlitchText.isGlitchEnabled();
         final float d = sp.getResources().getDisplayMetrics().density;
         final ListView lv = new ListView(sp.getContext());
         lv.setAdapter(la);
@@ -189,7 +190,7 @@ final class GlitchDropdown {
         PopupWindow pw = sOpen;
         if (pw == null) return;
         H.removeCallbacks(sPulse);
-        if (selectMode && GlitchText.isFxAllowed() && !sClosing
+        if (selectMode && GlitchText.isGlitchEnabled() && !sClosing
                 && sOpenList != null) {
             sClosing = true;
             // disintegrate: kilat scanline + fragment pecah bergeser

@@ -10,12 +10,13 @@
      (proxyTable + proxyStatus) → Kartu Uji Proxy (testUrl di
      TextInputLayout Widget.Wpmulti.TextField + test1Btn/test20Btn +
      testResult + verifyView).
-     Setelan (4/7): 2 kartu Widget.Wpmulti.Card — "VPN & Trafik"
+     Setelan (4/7): 3 kartu Widget.Wpmulti.Card — "VPN & Trafik"
      (vpnDnsMode/vpnDnsServer di TextField/vpnIpMode/vpnAppMode/
      vpnPickAppsBtn/vpnAppCount/vpnPickIpModeBtn/vpnIpModeAppCount/
      vpnAutoReconnect/vpnSysSettingsBtn; spinner+checkbox bawaan tema;
-     sub-heading bold 14sp; catatan 12sp) → "Aplikasi" (settingVer/
-     settingDevice/settingPaths + exportLogBtn/clearCacheBtn).
+     sub-heading bold 14sp; catatan 12sp) → "Tampilan" (glitchMode:
+     mode efek glitch Auto/Selalu aktif/Mati - cy9) → "Aplikasi"
+     (settingVer/settingDevice/settingPaths + exportLogBtn/clearCacheBtn).
      Log (4/7): logFilter di TextInputLayout Widget.Wpmulti.TextField;
      copyLogBtn/clearLogBtn OutlinedButton; logLevel/logScroll/logView
      pindahan Task 1 tetap.
@@ -775,6 +776,45 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
                             android:text="Catatan: hanya TCP yang di-relay (IPv4+IPv6). DNS dienkripsi sesuai mode di atas (DoH/DoT/DoQ) atau plain UDP/53. UDP lain &amp; ping ke internet di-drop."
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- KARTU TAMPILAN (cy9): mode efek glitch - penggerak
+                     waktu efek kini Handler/Choreographer sendiri, jadi
+                     "Selalu aktif" tetap jalan walau skala animator
+                     sistem = 0. Spinner ini sendiri ikut bahasa glitch
+                     (installTouch/registerTree rootMain). -->
+                <com.google.android.material.card.MaterialCardView
+                    style="@style/Widget.Wpmulti.Card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Tampilan"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Efek glitch"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <Spinner android:id="@+id/glitchMode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Selalu aktif (default): glitch tetap jalan walau skala animasi sistem 0. Auto: ikuti sistem. Mati: tanpa efek - UI tetap berfungsi normal."
                             android:textSize="12sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
