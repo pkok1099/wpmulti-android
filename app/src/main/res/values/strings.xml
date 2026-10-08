@@ -7,7 +7,11 @@
     <string name="ip_mode_global">GLOBAL</string>
     <string name="ip_mode_v4">IPv4</string>
     <string name="ip_mode_v6">IPv6</string>
+    <string name="ip_mode_block4">BLOCK v4</string>
+    <string name="ip_mode_block6">BLOCK v6</string>
     <string name="ip_mode_global_desc">\u2014 ikut pengaturan utama</string>
     <string name="ip_mode_v4_desc">\u2014 paksa IPv4 utk app ini</string>
     <string name="ip_mode_v6_desc">\u2014 paksa IPv6 utk app ini</string>
+    <string name="ip_mode_block4_desc">\u2014 tolak IPv4, hanya v6</string>
+    <string name="ip_mode_block6_desc">\u2014 tolak IPv6, hanya v4</string>
 </resources>

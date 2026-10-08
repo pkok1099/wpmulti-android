@@ -4,6 +4,59 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.7] — 2026-10-09
+
+### Added
+- **BLOCK v4 / BLOCK v6 — mode IP per aplikasi** (dropdown Mode IP global
+  TIDAK disentuh; hanya popup dialog "Mode IP per aplikasi"):
+  - Popup 1-tap kini 5 baris: GLOBAL / IPv4 / IPv6 / **BLOCK v4** /
+    **BLOCK v6**, label jelas, warna baru keluarga merah/oranye
+    (BLOCK v4 = status_coral, BLOCK v6 = status_red; wash 15% seperti
+    chip lain) + legenda di bawah search bar diperluas (arti kedua mode,
+    baris prioritas "per-app menang atas global", catatan berlaku saat
+    VPN dinyalakan ulang; HUD petunjuk reconnect muncul bila mengubah
+    mode saat VPN jalan).
+  - Arti: BLOCK v4 = app itu tidak boleh punya koneksi IPv4 sama sekali
+    (hanya v6); BLOCK v6 kebalikannya. BUKAN bypass: tidak ada paket
+    versi yang diblok keluar lewat jaringan asli atas nama app itu.
+  - Penegakan di TUN (data plane Java VpnEngine, tanpa menyentuh engine
+    Go): TCP versi diblok dijawab **RST** seketika (fallback instan,
+    bukan timeout); UDP non-DNS di-drop + **ICMP host-unreachable (v4
+    type 3 code 1) / ICMPv6 no-route (v6 type 1 code 0)** dengan kutipan
+    paket asli; **auto dual-capture** — bila ada app BLOCK dan global
+    bukan dual, versi yang diblok ikut ditangkap ke TUN (dilaporka di
+    log start; konsekuensinya versi "bypass" app lain kini lewat tunnel).
+  - **DNS (req 2c)**: query A (BLOCK v4) / AAAA (BLOCK v6) dijawab lokal
+    **NOERROR + answer kosong (NODATA) — bukan NXDOMAIN**; versi yang
+    diizinkan diteruskan, upstream-nya diarahkan menghindari versi yang
+    diblok via tabel counterpart resolver yang sama (plain + DoT literal).
+  - Atribusi per-app: `getConnectionOwnerUid` (TCP/UDP) + cache verdict
+    per 4-tuple seumur sesi (SYN retransmit & query DNS berikutnya tak
+    mengulang binder call); fail-open bila uid tak dikenal.
+  - **Log ringkas (req g)**: jumlah paket di-drop + jawaban DNS NODATA
+    diringkas per interval 30 dtk per app ke logView (bebas glitch),
+    bukan per paket; ringkasan parsial terakhir saat VPN berhenti.
+  - Verifikasi statis: harness Java murni 40 assertion wire-format
+    (parser qname/qtype + fail-open, header NODATA, ICMP 3/1 & 1/0 arah/
+    kutipan/cap, checksum IP/ICMP/pseudo-v6/RST) — SEMUA LULUS. Build
+    debug + release/R8 lolos; simbol & string BLOCK terverifikasi di dex.
+  - Audit kebocoran (req d) dilaporkan jujur di docs/KNOWN_ISSUES.md §8
+    (G1–G9): split-tunnel bypass, ICMP tak teratribusi, DoH bawaan app,
+    family upstream DoH/DoQ, resolver tanpa counterpart, jendela VPN
+    mati, fail-open, konsekuensi dual-capture. TIDAK diklaim bebas bocor.
+
+### Fixed
+- **Navbar pill (cy10.7)**: indikator aktif kini dipusatkan vertikal
+  terhadap BLOK ikon+label dihitung dari ukuran nyata hasil layout
+  (row.getTop + item center; rumus lama memusatkan ke ikon dengan offset
+  padTop+ikon/2 yang bisa meleset saat ITEM_MIN clamp/pembulatan) —
+  hilangkan "pill sedikit lebih rendah". Asimetri pill luar (kiri lebih
+  rapat) dihilangkan dengan kompensasi padding row dari lebar terukur
+  label item tepi ("Beranda" vs "Setelan" proporsional) → inset kiri =
+  inset kanan; item tetap seragam, indikator/sentuhan/glitch tak berubah.
+- Popup mode IP: cap ukur tinggi kini mengikuti jumlah baris (5×48dp,
+  bukan 200dp utk 3 baris) — posisi "di atas chip" tidak salah hitung.
+
 ## [cy10.6] — 2026-10-08
 
 ### Changed

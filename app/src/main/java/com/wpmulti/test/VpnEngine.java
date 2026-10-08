@@ -161,13 +161,23 @@ public class VpnEngine extends VpnService {
     private String dnsMode = "plain";
     // Mode IP global: "dual" | "v6only" | "v4only". Di-set di onStartCommand.
     private String ipMode = "dual";
-    // Mode IP per aplikasi: pkg -> "v4" | "v6". Di-set di onStartCommand.
+    // Mode IP per aplikasi: pkg -> "v4" | "v6" | "block4" | "block6".
+    // Di-set di onStartCommand (dibaca dari SharedPreferences saat start
+    // saja - perubahan mid-sesi tidak berlaku sampai reconnect; UI memberi
+    // petunjuk reconnect, req f).
     private java.util.Map<String, String> appIpModes =
             java.util.Collections.emptyMap();
+    // cy10.7: ada app ber-mode BLOCK? (unci utk auto dual-capture & jalur
+    // cepat UDP/DNS yang tidak perlu jalan saat fitur tak dipakai).
+    private boolean anyBlockApp = false;
     // Target upstream: IP literal (plain/dot/doq) atau URL lengkap (doh).
     private String dnsTarget = "";
-    private SSLSocket dotSocket;      // koneksi DoT persisten
+    private SSLSocket dotSocket;      // koneksi DoT persisten (family target)
     private String dotServer = "";
+    // cy10.7: koneksi DoT kedua utk upstream family-remap (query app
+    // BLOCK yang HARUS menghindari versi IP yang diblok - req 2c).
+    private SSLSocket dotSocketAlt;
+    private String dotServerAlt = "";
     private QuicClientConnection doqConn; // koneksi DoQ persisten
     private String doqServer = "";
 
@@ -211,6 +221,94 @@ public class VpnEngine extends VpnService {
         return s != null && s.contains(":");
     }
 
+    // cy10.7: mode IP per-app sebagai kode int (lebih murah daripada
+    // String.equals di jalur paket). 0 = tanpa mode.
+    private static int modeCode(String m) {
+        if (m == null) return 0;
+        switch (m) {
+            case "v4": return 1;
+            case "v6": return 2;
+            case "block4": return 3;
+            case "block6": return 4;
+            default: return 0;
+        }
+    }
+
+    /** Pemilik aliran + mode IP-nya (cy10.7). */
+    private static final class FlowOwner {
+        final int mode;   // kode modeCode; 0 = tak ada
+        final String pkg; // utk statistik log (null bila mode 0)
+        FlowOwner(int m, String p) { mode = m; pkg = p; }
+    }
+
+    // Cache verdict per 4-tuple. Aman seumur sesi VPN: appIpModes hanya
+    // dibaca saat start (tak ada perubahan mid-sesi yang perlu tercermin).
+    // Cap 2048 + clear penuh (sederhana, deterministik; rebuild via lookup).
+    private final ConcurrentHashMap<String, FlowOwner> ownerCache =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Cari mode IP app pemilik aliran ini (TCP maupun UDP) lewat
+     * ConnectivityManager.getConnectionOwnerUid (conntrack netd).
+     * Fail-open: kegagalan/gagal mengenal -> null (diizinkan).
+     * Hasil di-cache per 4-tuple - lookup binder hanya sekali per
+     * koneksi/aliran baru, SYN retransmit & query DNS berikutnya dari
+     * port sumber yang sama memakai cache.
+     */
+    private FlowOwner flowOwner(boolean isV6, int proto,
+            byte[] srcB, int srcPort, byte[] dstB, int dstPort) {
+        if (appIpModes.isEmpty()) return null;
+        String key = (isV6 ? "6:" : "4:") + ipStr(srcB) + ":" + srcPort
+                + ">" + ipStr(dstB) + ":" + dstPort;
+        FlowOwner o = ownerCache.get(key);
+        if (o != null) return o;
+        int uid;
+        try {
+            java.net.InetSocketAddress local = new java.net.InetSocketAddress(
+                    java.net.InetAddress.getByAddress(srcB), srcPort);
+            java.net.InetSocketAddress remote = new java.net.InetSocketAddress(
+                    java.net.InetAddress.getByAddress(dstB), dstPort);
+            uid = connOwnerUid(proto, local, remote);
+        } catch (Exception e) {
+            return null; // fail-open: lebih baik lolos daripada putus
+        }
+        if (uid < 0) return null;
+        String[] pkgs;
+        try {
+            pkgs = getPackageManager().getPackagesForUid(uid);
+        } catch (Exception e) {
+            return null;
+        }
+        if (pkgs == null) return null;
+        FlowOwner found = null;
+        for (String p : pkgs) {
+            int m = modeCode(appIpModes.get(p));
+            if (m != 0) { found = new FlowOwner(m, p); break; }
+        }
+        if (found == null) found = new FlowOwner(0, null);
+        if (ownerCache.size() > 2048) ownerCache.clear();
+        ownerCache.put(key, found);
+        return found;
+    }
+
+    /**
+     * Aksi utk SYN TCP milik app ber-mode: 0 = teruskan, 1 = drop diam
+     * (perilaku lama mode v4/v6 - Happy Eyeballs), 2 = TOLAK CEPAT via
+     * RST (mode BLOCK, req 2b). Mode v4/v6 hanya aktif saat global dual
+     * (perilaku lama); BLOCK berlaku di SEMUA mode global karena TUN
+     * di-auto-capture dual bila ada app BLOCK (lihat onStartCommand).
+     */
+    private int synAction(FlowOwner o, boolean isV6) {
+        if (o == null || o.mode == 0) return 0;
+        switch (o.mode) {
+            case 1: return "dual".equals(ipMode) && isV6 ? 1 : 0;
+            case 2: return "dual".equals(ipMode) && !isV6 ? 1 : 0;
+            case 3: return isV6 ? 0 : 2; // BLOCK v4
+            case 4: return isV6 ? 2 : 0; // BLOCK v6
+        }
+        return 0;
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (running) return START_NOT_STICKY;
@@ -223,21 +321,13 @@ public class VpnEngine extends VpnService {
             String ipMode = intent != null
                     ? intent.getStringExtra("vpn_ip_mode") : null;
             if (ipMode == null || ipMode.isEmpty()) ipMode = "dual";
-            if ("v6only".equals(ipMode)) {
-                b.addAddress(VPN_ADDR6, VPN_PREFIX6);
-                b.addRoute("::", 0);
-            } else if ("v4only".equals(ipMode)) {
-                b.addAddress(VPN_ADDR, VPN_PREFIX);
-                b.addRoute("0.0.0.0", 0);
-            } else {
-                ipMode = "dual";
-                b.addAddress(VPN_ADDR, VPN_PREFIX);
-                b.addAddress(VPN_ADDR6, VPN_PREFIX6);
-                b.addRoute("0.0.0.0", 0);
-                b.addRoute("::", 0); // tangkap juga trafik IPv6 -> anti bocor
-            }
-            this.ipMode = ipMode;
-            // Mode IP per aplikasi: baca vpn_app_ip_<pkg> dari preferensi.
+            // Mode IP per aplikasi dibaca DULU (req 2a): bila ada app
+            // ber-mode BLOCK, versi IP yang akan diblok HARUS ditangkap
+            // ke TUN - tanpa jalur bypass - supaya bisa ditolak di data
+            // plane. Route VPN bersifat global (satu TUN utk semua app),
+            // jadi menangkap versi itu utk SATU app = menangkap utk semua;
+            // konsekuensinya (trafik versi "bypass" app lain kini ikut
+            // tunnel, bukan direct) dicatat di KNOWN_ISSUES.
             java.util.Map<String, String> aim = new java.util.HashMap<>();
             try {
                 android.content.SharedPreferences sp =
@@ -255,8 +345,51 @@ public class VpnEngine extends VpnService {
                 android.util.Log.w(TAG, "baca mode IP per-app gagal: " + ex);
             }
             appIpModes = aim;
+            ownerCache.clear();
+            anyBlockApp = false;
+            int nBlock4 = 0, nBlock6 = 0;
+            for (String m : aim.values()) {
+                if ("block4".equals(m)) { nBlock4++; anyBlockApp = true; }
+                else if ("block6".equals(m)) { nBlock6++; anyBlockApp = true; }
+            }
             android.util.Log.i(TAG,
-                    "mode IP per-app: " + aim.size() + " aplikasi");
+                    "mode IP per-app: " + aim.size() + " aplikasi"
+                    + (anyBlockApp ? " (BLOCK v4: " + nBlock4
+                      + ", BLOCK v6: " + nBlock6 + ")" : ""));
+            boolean upgraded = false;
+            if ("v6only".equals(ipMode)) {
+                b.addAddress(VPN_ADDR6, VPN_PREFIX6);
+                b.addRoute("::", 0);
+                if (anyBlockApp) {
+                    // BLOCK v4 butuh paket v4 masuk TUN -> capture v4 juga
+                    b.addAddress(VPN_ADDR, VPN_PREFIX);
+                    b.addRoute("0.0.0.0", 0);
+                    upgraded = true;
+                }
+            } else if ("v4only".equals(ipMode)) {
+                b.addAddress(VPN_ADDR, VPN_PREFIX);
+                b.addRoute("0.0.0.0", 0);
+                if (anyBlockApp) {
+                    b.addAddress(VPN_ADDR6, VPN_PREFIX6);
+                    b.addRoute("::", 0);
+                    upgraded = true;
+                }
+            } else {
+                ipMode = "dual";
+                b.addAddress(VPN_ADDR, VPN_PREFIX);
+                b.addAddress(VPN_ADDR6, VPN_PREFIX6);
+                b.addRoute("0.0.0.0", 0);
+                b.addRoute("::", 0); // tangkap juga trafik IPv6 -> anti bocor
+            }
+            this.ipMode = ipMode;
+            if (anyBlockApp) {
+                blockLogOffer("aktif: " + (nBlock4 + nBlock6) + " app"
+                        + " (BLOCK v4: " + nBlock4 + ", BLOCK v6: " + nBlock6
+                        + ")"
+                        + (upgraded ? "; TUN dinaikkan ke dual-capture"
+                          + " agar blok ditegakkan (versi bypass app lain"
+                          + " kini lewat tunnel)" : ""));
+            }
             // Kill switch: allowBypass() TIDAK dipanggil -> bypass dilarang.
             // (API 29+: default Builder sudah memblokir bypass.)
             // Konfigurasi DNS dari UI: mode + IP iklan + target upstream.
@@ -468,6 +601,7 @@ public class VpnEngine extends VpnService {
      */
     private void startUdpSweeper() {
         Thread t = new Thread(() -> {
+            long lastBlockLog = System.currentTimeMillis();
             while (!stopFlag) {
                 try { Thread.sleep(15_000); } catch (InterruptedException ignored) { return; }
                 if (stopFlag) return;
@@ -477,6 +611,12 @@ public class VpnEngine extends VpnService {
                     if (now - e.getValue().lastActive > 60_000) {
                         try { e.getValue().close(); } catch (Exception ignored) {}
                     }
+                }
+                // cy10.7 (req g): ringkasan BLOCK per interval 30 dtk
+                // (sweeper jalan tiap 15 dtk -> emisi tiap putaran ke-2).
+                if (now - lastBlockLog >= 30_000) {
+                    lastBlockLog = now;
+                    try { emitBlockSummaries(); } catch (Exception ignored) {}
                 }
             }
         }, "vpn-udp-sweeper");
@@ -531,6 +671,11 @@ public class VpnEngine extends VpnService {
         stopFlag = true;
         running = false;
         inst = null;
+        // cy10.7: emisi ringkasan terakhir (interval parsial) sebelum
+        // statistik dibersihkan, lalu reset state BLOCK.
+        try { emitBlockSummaries(); } catch (Exception ignored) {}
+        blockStats.clear();
+        ownerCache.clear();
         try { stopForeground(STOP_FOREGROUND_REMOVE); } catch (Exception ignored) {}
         for (Map.Entry<String, TcpConn> e : tcpConns.entrySet()) {
             try { e.getValue().close(); } catch (Exception ignored) {}
@@ -564,6 +709,9 @@ public class VpnEngine extends VpnService {
         closeQuietly(dotSocket);
         dotSocket = null;
         dotServer = "";
+        closeQuietly(dotSocketAlt);
+        dotSocketAlt = null;
+        dotServerAlt = "";
         closeDoq();
     }
 
@@ -724,9 +872,23 @@ public class VpnEngine extends VpnService {
         byte[] dstB = Arrays.copyOfRange(pkt, 16, 20);
         byte[] data = Arrays.copyOfRange(pkt, ihl + 8, ihl + udpLen);
         if (dstPort == 53) {
-            // DNS tetap via forwardDns
+            // DNS tetap via forwardDns (jawaban NODATA utk versi yang
+            // diblok ditangani di sana - req 2c)
             pool.execute(() -> forwardDns(srcB, dstB, srcPort, data, false));
             return;
+        }
+        // cy10.7: UDP non-DNS dari app BLOCK utk versi IP yang diblok
+        // -> DROP + ICMP host-unreachable (req 2b) agar socket ter-connect
+        // app mendapat error segera (QUIC/DoH-bawaan-app fallback instan).
+        // Lookup hanya saat ada app BLOCK (guard anyBlockApp) - jalur UDP
+        // app tanpa mode sama sekali tidak tersentuh.
+        if (anyBlockApp) {
+            FlowOwner o = flowOwner(false, 17, srcB, srcPort, dstB, dstPort);
+            if (o != null && o.mode == 3) { // BLOCK v4, paket v4
+                countBlockDrop(o.pkg, false);
+                sendUnreach(false, srcB, dstB, pkt);
+                return;
+            }
         }
         // UDP non-DNS: relay via WireGuard
         String key = ipStr(srcB) + ":" + srcPort + ">" + ipStr(dstB) + ":" + dstPort;
@@ -754,6 +916,15 @@ public class VpnEngine extends VpnService {
             pool.execute(() -> forwardDns(src6, dst6, srcPort, data, true));
             return;
         }
+        // cy10.7: BLOCK v6 utk UDP non-DNS - lihat catatan handleUdp.
+        if (anyBlockApp) {
+            FlowOwner o = flowOwner(true, 17, src6, srcPort, dst6, dstPort);
+            if (o != null && o.mode == 4) { // BLOCK v6, paket v6
+                countBlockDrop(o.pkg, true);
+                sendUnreach(true, src6, dst6, pkt);
+                return;
+            }
+        }
         String key = ipStr(src6) + ":" + srcPort + ">" + ipStr(dst6) + ":" + dstPort + "6";
         UdpFlow f = udpFlows.get(key);
         if (f == null) {
@@ -771,22 +942,61 @@ public class VpnEngine extends VpnService {
     // replySrc = alamat server DNS yang di-query klien; HARUS dipakai sebagai
     // source address paket balasan, kalau tidak socket klien yang ter-connect()
     // akan me-drop balasan karena source mismatch (V6-1).
+    //
+    // cy10.7 (req 2c): utk app ber-mode BLOCK, query DNS utk versi IP yang
+    // diblok dijawab LOKAL dengan NOERROR + answer kosong (NODATA - BUKAN
+    // NXDOMAIN): app percaya nama itu tak punya alamat versi tsb dan
+    // langsung memakai versi yang diizinkan, tanpa percobaan koneksi yang
+    // hanya berujung RST. Query versi yang diizinkan diteruskan normal,
+    // dan upstream-nya diarahkan MENGHINDARI versi yang diblok (remap ke
+    // alamat counterpart provider yang sama bila diketahui) - "jangan beri
+    // server DNS versi IP yang diblok".
     private void forwardDns(byte[] srcB, byte[] replySrc, int srcPort,
                             byte[] query, boolean v6) {
         byte[] resp;
+        // cy10.7: atribusi pemilik query (via conntrack UDP, protokol 17).
+        FlowOwner o = null;
+        if (anyBlockApp) {
+            o = flowOwner(v6, 17, srcB, srcPort, replySrc, 53);
+        }
+        int blockFamily = 0; // 4/6 bila pemilik query app BLOCK
+        if (o != null && o.mode == 3) blockFamily = 4;
+        else if (o != null && o.mode == 4) blockFamily = 6;
+        int preferFamily = 0; // family upstream yang DIUTAMAKAN (kebalikan blok)
+        if (blockFamily != 0) {
+            int qEnd = dnsQuestionEnd(query);
+            if (qEnd > 0) {
+                int qtype = u16(query, qEnd - 4);
+                boolean kill = (blockFamily == 4 && qtype == 1)   // A
+                        || (blockFamily == 6 && qtype == 28);      // AAAA
+                if (kill) {
+                    countBlockDns(o.pkg);
+                    sendDnsReply(srcB, replySrc, srcPort,
+                            dnsNodata(query, qEnd), v6);
+                    return;
+                }
+            }
+            // versi yang diizinkan: hindari versi yang diblok di upstream
+            preferFamily = blockFamily == 4 ? 6 : 4;
+        }
         try {
             switch (dnsMode) {
-                case "dot": resp = dotQuery(query); break;
+                case "dot": resp = dotQuery(query, preferFamily); break;
                 case "doh": resp = dohQuery(query); break;
                 case "doq": resp = doqQuery(query); break;
-                default:    resp = plainDnsQuery(replySrc, query); break;
+                default:    resp = plainDnsQuery(replySrc, query, preferFamily); break;
             }
         } catch (Exception e) {
             android.util.Log.w(TAG, "dns " + dnsMode + ": " + e);
             return;
         }
+        sendDnsReply(srcB, replySrc, srcPort, resp, v6);
+    }
+
+    // Bangun paket UDP balasan replySrc:53 -> srcB:srcPort dan antre ke TUN.
+    private void sendDnsReply(byte[] srcB, byte[] replySrc, int srcPort,
+                              byte[] resp, boolean v6) {
         try {
-            // Bangun paket UDP balasan dari replySrc:53 -> srcB:srcPort.
             byte[] udp = new byte[8 + resp.length];
             put16(udp, 0, 53);
             put16(udp, 2, srcPort);
@@ -806,12 +1016,112 @@ public class VpnEngine extends VpnService {
         }
     }
 
+    /**
+     * Offset AKHIR section question pertama (qname + qtype + qclass)
+     * query DNS, atau -1 bila tidak bisa diparse dengan aman (pendek,
+     * qname tak wajar, QDCOUNT != 1). Fail-open: pemanggil meneruskan
+     * query apa adanya.
+     */
+    static int dnsQuestionEnd(byte[] q) {
+        if (q == null || q.length < 17) return -1; // 12 hdr + root + type/class
+        int qd = ((q[4] & 0xFF) << 8) | (q[5] & 0xFF);
+        if (qd != 1) return -1; // hanya query 1-pertanyaan (umum)
+        int i = 12;
+        while (true) {
+            if (i >= q.length) return -1;
+            int len = q[i] & 0xFF;
+            if (len == 0) { i++; break; }
+            if (len > 63) return -1; // kompresi tidak sah di query
+            i += 1 + len;
+            if (i > q.length) return -1;
+        }
+        int end = i + 4;
+        return end <= q.length ? end : -1;
+    }
+
+    /**
+     * Jawaban NODATA (req 2c): header NOERROR (RCODE=0) + QDCOUNT=1 +
+     * ANCOUNT/NSCOUNT/ARCOUNT=0 + question diecho. QR=1, RD disalin dari
+     * query, RA=1. BUKAN NXDOMAIN - NXDOMAIN membuat resolver menganggap
+     * nama TIDAK ADA sama sekali (memicu negatif-cache & lookup ulang
+     * nama), sedangkan NODATA berarti "nama ada, tanpa alamat versi
+     * ini" - persis semantik BLOCK.
+     */
+    static byte[] dnsNodata(byte[] q, int qEnd) {
+        byte[] r = new byte[qEnd];
+        r[0] = q[0]; r[1] = q[1];                       // ID diecho
+        r[2] = (byte) (0x80 | (q[2] & 0x01));           // QR=1, RD disalin
+        r[3] = (byte) 0x80;                             // RA=1, RCODE=0
+        r[4] = 0; r[5] = 1;                             // QDCOUNT=1
+        // ANCOUNT/NSCOUNT/ARCOUNT tetap 0 (array baru)
+        System.arraycopy(q, 12, r, 12, qEnd - 12);      // question diecho
+        return r;
+    }
+
+    /**
+     * Pasangan alamat v4<->v6 provider resolver yang sama (anycast
+     * publik umum). Dipakai utk mengarahkan upstream query app BLOCK
+     * MENGHINDARI versi IP yang diblok tanpa berganti provider (jawaban
+     * tetap dari resolver yang sama). null = tak diketahui.
+     */
+    private static String dnsCounterpart(String ip, boolean wantV6) {
+        if (ip == null) return null;
+        if (wantV6) {
+            switch (ip) {
+                case "1.1.1.1":         return "2606:4700:4700::1111";
+                case "1.0.0.1":         return "2606:4700:4700::1001";
+                case "8.8.8.8":         return "2001:4860:4860::8888";
+                case "8.8.4.4":         return "2001:4860:4860::8844";
+                case "9.9.9.9":         return "2620:fe::fe";
+                case "149.112.112.112": return "2620:fe::9";
+                case "208.67.222.222":  return "2620:119:35::35";
+                case "208.67.220.220":  return "2620:119:53::53";
+                default: return null;
+            }
+        } else {
+            switch (ip) {
+                case "2606:4700:4700::1111": return "1.1.1.1";
+                case "2606:4700:4700::1001": return "1.0.0.1";
+                case "2001:4860:4860::8888": return "8.8.8.8";
+                case "2001:4860:4860::8844": return "8.8.4.4";
+                case "2620:fe::fe":          return "9.9.9.9";
+                case "2620:fe::9":           return "149.112.112.112";
+                case "2620:119:35::35":      return "208.67.222.222";
+                case "2620:119:53::53":      return "208.67.220.220";
+                default: return null;
+            }
+        }
+    }
+
     // Plain DNS: UDP/53 ke server yang di-query (replySrc).
-    private byte[] plainDnsQuery(byte[] replySrc, byte[] query) throws Exception {
+    // cy10.7 preferFamily (6/4): utk query app BLOCK, kirim upstream via
+    // versi yang TIDAK diblok bila counterpart provider diketahui; gagal
+    // (mis. jaringan riil tanpa v6) -> fallback ke upstream asli - DNS
+    // yang jalan lebih penting daripada kemurnian transport socket KITA
+    // (app tetap tanpa koneksi versi yang diblok; celah ini tercatat).
+    private byte[] plainDnsQuery(byte[] replySrc, byte[] query,
+                                 int preferFamily) throws Exception {
+        InetAddress upstream = InetAddress.getByAddress(replySrc);
+        if (preferFamily != 0
+                && upstream.getAddress().length != (preferFamily == 6 ? 16 : 4)) {
+            String cp = dnsCounterpart(ipStr(replySrc), preferFamily == 6);
+            if (cp != null) {
+                try {
+                    return plainQueryOnce(InetAddress.getByName(cp), query);
+                } catch (Exception e) {
+                    android.util.Log.w(TAG, "dns upstream " + cp + " gagal,"
+                            + " fallback family asli: " + e);
+                }
+            }
+        }
+        return plainQueryOnce(upstream, query);
+    }
+
+    private byte[] plainQueryOnce(InetAddress upstream, byte[] query)
+            throws Exception {
         DatagramSocket ds = null;
         try {
-            InetAddress upstream = InetAddress.getByAddress(replySrc);
-            if (replySrc.length == 16) {
+            if (upstream.getAddress().length == 16) {
                 ds = new DatagramSocket(new InetSocketAddress(
                         InetAddress.getByName("::"), 0));
             } else {
@@ -831,28 +1141,42 @@ public class VpnEngine extends VpnService {
 
     // DoT (RFC 7858): TLS ke target:853, framing 2-byte length prefix.
     // Koneksi persisten + reconnect saat gagal.
-    private synchronized byte[] dotQuery(byte[] query) throws Exception {
-        if (dotSocket == null || dotSocket.isClosed()
-                || !dnsTarget.equals(dotServer)) {
-            closeQuietly(dotSocket);
-            dotSocket = null;
-            InetAddress addr = InetAddress.getByName(dnsTarget);
+    // cy10.7 preferFamily: utk query app BLOCK, bila target ber-family
+    // yang diblok dan counterpart provider diketahui, dipakai koneksi
+    // KEDUA (slot alt) ke alamat counterpart - query app itu tidak
+    // menumpang versi yang diblok. Slot default tidak tersentuh.
+    private synchronized byte[] dotQuery(byte[] query, int preferFamily)
+            throws Exception {
+        boolean alt = false;
+        String server = dnsTarget;
+        if (preferFamily != 0) {
+            boolean tgtV6 = isV6Literal(dnsTarget); // literal (divalidasi UI)
+            if ((preferFamily == 6) != tgtV6) {
+                String cp = dnsCounterpart(dnsTarget, preferFamily == 6);
+                if (cp != null) { alt = true; server = cp; }
+            }
+        }
+        SSLSocket s = alt ? dotSocketAlt : dotSocket;
+        String cur = alt ? dotServerAlt : dotServer;
+        if (s == null || s.isClosed() || !server.equals(cur)) {
+            closeQuietly(s);
+            s = null;
+            InetAddress addr = InetAddress.getByName(server);
             SSLSocketFactory f =
                     (SSLSocketFactory) SSLSocketFactory.getDefault();
-            SSLSocket s = (SSLSocket) f.createSocket(addr, 853);
-            protect(s); // belt-and-suspenders (app sudah di-disallow)
-            s.setSoTimeout(10000);
-            s.startHandshake();
-            dotSocket = s;
-            dotServer = dnsTarget;
+            SSLSocket ns = (SSLSocket) f.createSocket(addr, 853);
+            protect(ns); // belt-and-suspenders (app sudah di-disallow)
+            ns.setSoTimeout(10000);
+            ns.startHandshake();
+            s = ns;
         }
         try {
-            OutputStream out = dotSocket.getOutputStream();
+            OutputStream out = s.getOutputStream();
             out.write((query.length >> 8) & 0xFF);
             out.write(query.length & 0xFF);
             out.write(query);
             out.flush();
-            InputStream in = dotSocket.getInputStream();
+            InputStream in = s.getInputStream();
             int hi = in.read(), lo = in.read();
             if (hi < 0 || lo < 0) throw new IOException("dot: EOF");
             int len = (hi << 8) | lo;
@@ -861,9 +1185,12 @@ public class VpnEngine extends VpnService {
             readFully(in, resp);
             return resp;
         } catch (Exception e) {
-            closeQuietly(dotSocket);
-            dotSocket = null;
+            closeQuietly(s);
+            s = null;
             throw e;
+        } finally {
+            if (alt) { dotSocketAlt = s; dotServerAlt = server; }
+            else { dotSocket = s; dotServer = server; }
         }
     }
 
@@ -979,6 +1306,101 @@ public class VpnEngine extends VpnService {
 
     // ================= ICMPv6 =================
 
+    // cy10.7 (req 2b): balasan CEPAT utk paket versi IP yang diblok.
+    // TCP -> RST (sendTcp, jalur yang sama dgn cap/dial-fail). UDP &
+    // lainnya -> ICMP/ICMPv6 destination unreachable dari "tujuan":
+    //   v4: type 3 code 1 (host unreachable)
+    //   v6: type 1 code 0 (no route to destination)
+    // Paket asli dikutip (RFC 792/4443) agar kernel bisa mengaitkan
+    // error ke socket app yang tepat (EHOSTUNREACH/EHOSTUNREACHv6 pada
+    // socket ter-connect) -> fallback instan, bukan timeout.
+    private void sendUnreach(boolean isV6, byte[] srcB, byte[] dstB,
+                             byte[] origPkt) {
+        try {
+            if (isV6) {
+                // kutip maksimal utk tetap <= MTU minimum IPv6 (1280)
+                int ql = Math.min(origPkt.length, 1232);
+                byte[] icmp = new byte[8 + ql];
+                icmp[0] = 1; icmp[1] = 0;
+                System.arraycopy(origPkt, 0, icmp, 8, ql);
+                put16(icmp, 2, 0);
+                put16(icmp, 2, checksum6(dstB, srcB, 58, icmp));
+                writeQueue.offer(buildIpv6(dstB, srcB, 58, icmp));
+            } else {
+                int ql = Math.min(origPkt.length, 536);
+                byte[] icmp = new byte[8 + ql];
+                icmp[0] = 3; icmp[1] = 1;
+                System.arraycopy(origPkt, 0, icmp, 8, ql);
+                put16(icmp, 2, 0);
+                put16(icmp, 2, checksum(icmp, 0, icmp.length));
+                writeQueue.offer(buildIpv4(dstB, srcB, 1, icmp));
+            }
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "unreach: " + e);
+        }
+    }
+
+    // ================= statistik BLOCK (req g) =================
+
+    // pkg -> {0: drop v4 interval, 1: drop v6 interval, 2: total v4,
+    //         3: total v6, 4: dns NODATA interval, 5: dns NODATA total}
+    private final ConcurrentHashMap<String, long[]> blockStats =
+            new ConcurrentHashMap<>();
+    /** Antrean ringkasan BLOCK utk logView (dibatasi 200; didrain thread
+     *  monitor MainActivity saat foreground). TIDAK per paket - diringkas
+     *  per interval 30 dtk per app (req g). */
+    private static final java.util.concurrent.ConcurrentLinkedQueue<String>
+            blockLog = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    public static String pollBlockLog() { return blockLog.poll(); }
+
+    private static void blockLogOffer(String line) {
+        android.util.Log.i(TAG, "BLOCK " + line);
+        blockLog.offer(line);
+        while (blockLog.size() > 200) blockLog.poll();
+    }
+
+    private void countBlockDrop(String pkg, boolean isV6) {
+        if (pkg == null) return;
+        long[] v = blockStats.computeIfAbsent(pkg, k -> new long[6]);
+        synchronized (v) {
+            v[isV6 ? 1 : 0]++;
+            v[isV6 ? 3 : 2]++;
+        }
+    }
+
+    private void countBlockDns(String pkg) {
+        if (pkg == null) return;
+        long[] v = blockStats.computeIfAbsent(pkg, k -> new long[6]);
+        synchronized (v) { v[4]++; v[5]++; }
+    }
+
+    /** Ringkasan per interval (dipanggil sweeper tiap ~30 dtk + saat
+     *  cleanup): satu baris per app yang punya aktivitas di interval
+     *  ini - jumlah paket di-drop + total kumulatif + jumlah jawaban
+     *  DNS NODATA. */
+    private void emitBlockSummaries() {
+        for (Map.Entry<String, long[]> e : blockStats.entrySet()) {
+            long[] v = e.getValue();
+            synchronized (v) {
+                if (v[0] <= 0 && v[1] <= 0 && v[4] <= 0) continue;
+                StringBuilder sb = new StringBuilder("BLOCK[30s] ")
+                        .append(e.getKey()).append(":");
+                if (v[0] > 0 || v[2] > 0)
+                    sb.append(" drop v4=").append(v[0])
+                      .append(" (tot ").append(v[2]).append(")");
+                if (v[1] > 0 || v[3] > 0)
+                    sb.append(" drop v6=").append(v[1])
+                      .append(" (tot ").append(v[3]).append(")");
+                if (v[4] > 0)
+                    sb.append("; dns NODATA=").append(v[4])
+                      .append(" (tot ").append(v[5]).append(")");
+                blockLogOffer(sb.toString());
+                v[0] = v[1] = v[4] = 0;
+            }
+        }
+    }
+
     private void handleIcmp(byte[] pkt, int ihl) {
         if (pkt.length < ihl + 8) return;
         int type = pkt[ihl] & 0xFF;
@@ -1032,51 +1454,19 @@ public class VpnEngine extends VpnService {
     // ================= TCP via SOCKS5 =================
 
     // UID pemilik koneksi via ConnectivityManager (API 29+).
+    // proto: 6 = TCP, 17 = UDP (cy10.7: UDP dipakai utk atribusi query
+    // DNS & aliran UDP ke app BLOCK).
     // -1 bila tak diketahui/gagal (mis. izin) -> fail-open.
-    private int connOwnerUid(java.net.InetSocketAddress local,
+    private int connOwnerUid(int proto, java.net.InetSocketAddress local,
                              java.net.InetSocketAddress remote) {
         try {
             android.net.ConnectivityManager cm =
                     (android.net.ConnectivityManager) getSystemService(
                             android.content.Context.CONNECTIVITY_SERVICE);
             if (cm == null) return -1;
-            return cm.getConnectionOwnerUid(6, local, remote);
+            return cm.getConnectionOwnerUid(proto, local, remote);
         } catch (Exception ignored) {}
         return -1;
-    }
-
-    // true = SYN boleh lanjut. Dipanggil sekali per SYN baru (TCP saja;
-    // UDP kita hanya teruskan DNS/53 yang selalu lolos agar Happy Eyeballs
-    // bisa fallback ke versi IP yang diizinkan).
-    private boolean allowByAppIpMode(boolean isV6, byte[] srcB, int srcPort,
-                                     byte[] dstB, int dstPort) {
-        if (appIpModes.isEmpty()) return true;
-        if (!"dual".equals(ipMode)) return true; // global sudah via route
-        int uid;
-        try {
-            java.net.InetSocketAddress local = new java.net.InetSocketAddress(
-                    java.net.InetAddress.getByAddress(srcB), srcPort);
-            java.net.InetSocketAddress remote = new java.net.InetSocketAddress(
-                    java.net.InetAddress.getByAddress(dstB), dstPort);
-            uid = connOwnerUid(local, remote);
-        } catch (Exception e) {
-            return true; // fail-open: lebih baik lolos daripada putus
-        }
-        if (uid < 0) return true;
-        String[] pkgs;
-        try {
-            pkgs = getPackageManager().getPackagesForUid(uid);
-        } catch (Exception e) {
-            return true;
-        }
-        if (pkgs == null) return true;
-        for (String p : pkgs) {
-            String mode = appIpModes.get(p);
-            if (mode == null) continue;
-            if ("v4".equals(mode)) return !isV6;
-            if ("v6".equals(mode)) return isV6;
-        }
-        return true;
     }
 
     private void handleTcp(byte[] pkt, int ihl) {
@@ -1112,9 +1502,21 @@ public class VpnEngine extends VpnService {
                         0, seq + 1, 0x14, 0, null);
                 return;
             }
-            // Mode IP per aplikasi: drop diam-diam agar klien mencoba
-            // versi IP lain (Happy Eyeballs).
-            if (!allowByAppIpMode(false, srcB, srcPort, dstB, dstPort)) {
+            // Mode IP per aplikasi (cy10.3 + cy10.7). v4/v6 (lama): drop
+            // diam agar klien mencoba versi IP lain (Happy Eyeballs) -
+            // hanya saat global dual (perilaku lama). BLOCK v4/v6 (baru):
+            // TOLAK CEPAT - RST dari "tujuan" supaya connect() gagal
+            // seketika dan app langsung fallback (req 2b); berlaku di
+            // semua mode global (TUN dual-capture saat ada app BLOCK).
+            FlowOwner own = flowOwner(false, 6, srcB, srcPort, dstB, dstPort);
+            int act = synAction(own, false);
+            if (act == 2) {
+                countBlockDrop(own.pkg, false);
+                sendTcp(dstB, dstPort, srcB, srcPort,
+                        0, seq + 1, 0x14, 0, null);
+                return;
+            }
+            if (act == 1) {
                 diag("SYN4 DROP by appIpMode " + key);
                 return;
             }
@@ -1158,7 +1560,16 @@ public class VpnEngine extends VpnService {
                         0, seq + 1, 0x14, 0, null);
                 return;
             }
-            if (!allowByAppIpMode(true, src6, srcPort, dst6, dstPort)) {
+            // cy10.7: mode per-app + BLOCK - lihat catatan handleTcp.
+            FlowOwner own6 = flowOwner(true, 6, src6, srcPort, dst6, dstPort);
+            int act6 = synAction(own6, true);
+            if (act6 == 2) {
+                countBlockDrop(own6.pkg, true);
+                sendTcp(dst6, dstPort, src6, srcPort,
+                        0, seq + 1, 0x14, 0, null);
+                return;
+            }
+            if (act6 == 1) {
                 diag("SYN6 DROP by appIpMode " + key);
                 return;
             }

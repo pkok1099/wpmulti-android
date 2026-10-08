@@ -223,3 +223,53 @@ logView) masih berlaku. Checklist navbar DIGANTI:
      (bukan seluruh pill); tap item yang sudah aktif = no-op;
    - glitch saat pindah tab hanya pada 2 item yang berubah (lama korupsi
      singkat, baru rekonstruksi) — bukan seluruh navbar.
+
+### 8. Mode IP per aplikasi — celah yang TIDAK bisa ditutup dari dalam
+###    VpnService (audit cy10.7, dilaporkan apa adanya)
+
+Fitur BLOCK v4/v6 menegakkan blok di data plane TUN (lihat ARCHITECTURE
+§9). Audit kebocoran menemukan batas-batas berikut — semuanya dilaporkan
+jujur, TIDAK diklaim "tidak ada kebocoran":
+
+| # | Celah | Dampak nyata | Kenapa tidak bisa ditutup |
+|---|-------|--------------|---------------------------|
+| G1 | App yang di-bypass split tunnel (mode Tolak, atau di luar allowlist) | BLOCK (dan mode IP lain) tidak berlaku sama sekali utk app itu | Paket tidak pernah masuk TUN; routing per-UID dilakukan sistem, VpnService hanya bisa memilih siapa yang masuk |
+| G2 | ICMP echo tidak bisa diatribusikan ke app | Ping dari app BLOCK versi diblok tetap di-relay via WireGuard | `getConnectionOwnerUid` hanya mendukung TCP/UDP; conntrack ICMP tidak diekspos API publik. Dampak terbatas: echo membocorkan liveness/RTT, bukan data |
+| G3 | App dengan DoH/DoT bawaan (mis. browser) & record HTTPS/SVCB (type 65) | App tetap BISA MENDAPAT record A lewat jalur versi yang diizinkan (TCP 443/QUIC) → mencoba v4 → langsung RST | Konten TLS tidak bisa diperiksa tanpa MITM; blok dijalankan di level paket, bukan konten. Tidak ada egress versi diblok — hanya percobaan sia-sia yang cepat gagal |
+| G4 | Mode DNS DoH/DoQ: family upstream mengikuti dnsTarget | Query versi-diizinkan milik app BLOCK bisa menumpang versi-diblok di socket MILIK PROSES VPN | DoH ber-URL/hostname: memaksa family = koneksi terpisah per family + kontrol resolusi di luar jangkauan HttpsURLConnection; remap hanya diimplementasikan utk plain & DoT literal |
+| G5 | Resolver custom v4/v6-only tanpa counterpart di tabel | Sama seperti G4: fallback ke upstream family asli | Tidak ada cara mengetahui alamat v6 resolver pilihan user; menebak resolver lain = mengubah jawaban DNS |
+| G6 | Jendela VPN mati (stop biasa, revocation, gap sebelum auto-reconnect) | SEMUA trafik kedua versi lewat jaringan langsung | Sifat VPN off; kill switch yang ada (broadcast, notifikasi, reconnect 3x) meminimalkan durasi |
+| G7 | connOwnerUid fail-open | Paket versi diblok lolos bila uid tidak dikenal (race conntrack yang sangat jarang, kegagalan binder) | Prinsip lama proyek: putus total lebih buruk daripada lolos sesaat; volume normal: lookup berhasil deterministik |
+| G8 | Auto dual-capture mengubah jalur app lain | Global v6only/v4only + ada app BLOCK → versi "bypass" app lain kini ikut tunnel (bukan direct) | Route per-TUN bersifat global; menangkap versi utk SATU app = menangkap utk semua. Dilaporkan eksplisit di log start BLOCK |
+| G9 | UDP one-shot dgn port sumber baru per paket | Cache verdict miss → lookup per paket (beban CPU, bukan bocor) | Perilaku app; lookup tetap benar hanya lebih mahal |
+
+Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
+- Query DNS app BLOCK ke server versi yang diblok TETAP dijawab lokal
+  (NODATA utk versi diblok): "koneksi v4 ke DNS" hanyalah fiksi di dalam
+  device (app ↔ TUN) — tidak ada paket versi diblok keluar device atas
+  nama app itu. Men-drop-nya justru mematikan DNS app sepenuhnya saat
+  resolver hanya mencoba server versi itu.
+- Mode v4/v6 lama TIDAK difungsikan di global non-dual (perilaku cy10.3
+  dipertahankan); hanya BLOCK yang memicu dual-capture.
+
+### C-tambahan. Checklist device cy10.7 (BLOCK + navbar)
+
+4. **BLOCK v4/v6** (butuh jaringan dual-stack atau tunnel dual):
+   - Set app uji (mis. browser) ke BLOCK v4 → situs cek IP: kolom v4
+     kosong/gagal (fallback v6 terjadi, bukan error halaman), kolom v6
+     normal; logView menampilkan `BLOCK[30s] <pkg>: drop v4=… (tot …)`
+     setiap ±30 dtk saat app aktif mencoba v4;
+   - BLOCK v6 → kebalikan;
+   - ganti mode saat VPN jalan → HUD muncul "tersimpan - nyalakan ulang
+     VPN"; setelah restart VPN mode baru berlaku;
+   - uji reconnect: matikan VPN tiba-tiba ( airplane mode ) → auto-
+     reconnect membawa mode yang sama (mode dibaca ulang dari prefs);
+   - global mode Dual → BLOCK langsung efektif; global v6only/v4only →
+     log start menulis "TUN dinaikkan ke dual-capture";
+   - DNS mode plain 1.1.1.1 + BLOCK v4: buka situs baru (bukan cache) —
+     halaman tetap termuat via v6 (AAAA) tanpa delay panjang;
+   - app dengan DoH bawaan (Firefox) + BLOCK v4: browsing tetap jalan
+     via v6; percobaan v4 gagal cepat (tidak menggantung).
+5. **Navbar pill (fix cy10.7)**: indikator aktif terpusat vertikal
+   terhadap blok ikon+label (bukan miring ke bawah); jarak konten ke
+   lengkungan kiri = ke kanan; tetap tanpa kotak/label terpotong.

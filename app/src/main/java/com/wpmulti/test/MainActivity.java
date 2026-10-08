@@ -760,7 +760,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String appIpModeLabel(String m) {
-        return m.equals("v4") ? "IPv4" : m.equals("v6") ? "IPv6" : "Global";
+        // cy10.7: nilai "block4"/"block6" = blokir total versi IP itu
+        // utk app bersangkutan (lihat VpnEngine - RST/ICMP + DNS NODATA).
+        return m.equals("v4") ? "IPv4" : m.equals("v6") ? "IPv6"
+                : m.equals("block4") ? "BLOCK v4"
+                : m.equals("block6") ? "BLOCK v6" : "Global";
     }
 
     // cy10: varian warna chip mode IP per aplikasi - GLOBAL slate, IPv4
@@ -769,12 +773,21 @@ public class MainActivity extends AppCompatActivity {
     // hanya memilih palet per mode. Glitch tetap HANYA pada tombol yang
     // berubah (glitchNow MEDIUM di listener - tidak diubah).
     private void applyModeChipStyle(android.widget.Button btn, String mode) {
+        // cy10.7: BLOCK v4 = oranye-salmon (status_coral), BLOCK v6 = merah
+        // (status_red) - keluarga warna baru utk blokir, jelas beda dari
+        // cyan/magenta mode paksa. Wash + stroke dari token yang sama.
         if (mode.equals("v4")) {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_v4);
             btn.setTextColor(getColor(R.color.m3_primary));
         } else if (mode.equals("v6")) {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_v6);
             btn.setTextColor(getColor(R.color.m3_tertiary));
+        } else if (mode.equals("block4")) {
+            btn.setBackgroundResource(R.drawable.bg_chip_mode_block4);
+            btn.setTextColor(getColor(R.color.status_coral));
+        } else if (mode.equals("block6")) {
+            btn.setBackgroundResource(R.drawable.bg_chip_mode_block6);
+            btn.setTextColor(getColor(R.color.status_red));
         } else {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_global);
             btn.setTextColor(getColor(R.color.m3_on_surface_variant));
@@ -1000,15 +1013,22 @@ public class MainActivity extends AppCompatActivity {
         legend.setTextColor(getColor(R.color.m3_on_surface_variant));
         android.text.SpannableStringBuilder sb =
                 new android.text.SpannableStringBuilder();
+        // cy10.7: + BLOCK v4/v6 (blokir total versi IP utk app itu;
+        // oranye-salmon / merah) + baris prioritas per-app > global
+        // (permintaan eksplisit) + catatan berlakunya (reconnect).
         String[][] rows = {
                 {"\u25A0", "GLOBAL", " \u2014 ikut mode IP pengaturan utama"},
                 {"\u25A0", "IPv4", " \u2014 paksa koneksi IPv4 utk app ini"},
                 {"\u25A0", "IPv6", " \u2014 paksa koneksi IPv6 utk app ini"},
+                {"\u25A0", "BLOCK v4", " \u2014 tolak IPv4, app ini hanya IPv6"},
+                {"\u25A0", "BLOCK v6", " \u2014 tolak IPv6, app ini hanya IPv4"},
         };
         int[] cols = {
                 getColor(R.color.m3_on_surface_variant),
                 getColor(R.color.m3_primary),
                 getColor(R.color.m3_tertiary),
+                getColor(R.color.status_coral),
+                getColor(R.color.status_red),
         };
         for (int i = 0; i < rows.length; i++) {
             if (i > 0) sb.append("\n");
@@ -1021,6 +1041,15 @@ public class MainActivity extends AppCompatActivity {
             sb.append(rows[i][1]);
             sb.append(rows[i][2]);
         }
+        // Baris prioritas (req e): mode per aplikasi MENANG atas mode
+        // global; perubahan berlaku saat VPN dinyalakan ulang (req f).
+        sb.append("\n");
+        int pStart = sb.length();
+        sb.append("Mode per aplikasi menang atas mode global. "
+                + "Berlaku saat VPN dinyalakan ulang.");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(
+                        getColor(R.color.glitch_white)), pStart, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         legend.setText(sb);
         return legend;
     }
@@ -1171,17 +1200,23 @@ public class MainActivity extends AppCompatActivity {
         }
         final float d = getResources().getDisplayMetrics().density;
         final boolean fx = GlitchText.isGlitchEnabled();
-        // Value tersimpan: "" = global, "v4", "v6".
+        // Value tersimpan: "" = global, "v4", "v6", "block4", "block6"
+        // (cy10.7: dua mode BLOCK - blokir total satu versi IP utk app
+        // ini di data plane TUN; lihat VpnEngine.allowByAppIpMode).
         final String cur = vp.getString(key, "");
-        final String[] modes = {"", "v4", "v6"};
+        final String[] modes = {"", "v4", "v6", "block4", "block6"};
         final int[] labels = {R.string.ip_mode_global,
-                R.string.ip_mode_v4, R.string.ip_mode_v6};
+                R.string.ip_mode_v4, R.string.ip_mode_v6,
+                R.string.ip_mode_block4, R.string.ip_mode_block6};
         final int[] descs = {R.string.ip_mode_global_desc,
-                R.string.ip_mode_v4_desc, R.string.ip_mode_v6_desc};
+                R.string.ip_mode_v4_desc, R.string.ip_mode_v6_desc,
+                R.string.ip_mode_block4_desc, R.string.ip_mode_block6_desc};
         final int[] washes = {R.color.chip_global_bg,
-                R.color.chip_v4_bg, R.color.chip_v6_bg};
+                R.color.chip_v4_bg, R.color.chip_v6_bg,
+                R.color.chip_block4_bg, R.color.chip_block6_bg};
         final int[] dots = {R.color.m3_on_surface_variant,
-                R.color.m3_primary, R.color.m3_tertiary};
+                R.color.m3_primary, R.color.m3_tertiary,
+                R.color.status_coral, R.color.status_red};
 
         // Ripple tema dialog utk baris NON-aktif (cyan 15% via
         // colorControlHighlight tema) - feedback fungsional, tetap jalan
@@ -1256,6 +1291,13 @@ public class MainActivity extends AppCompatActivity {
                 // (label row tidak berubah -> tidak ikut glitch).
                 GlitchText.glitchNow(anchor, GlitchText.MEDIUM);
                 updateVpnIpModeCount();
+                // cy10.7 (req f): mode hanya dibaca VpnEngine saat VPN
+                // start -> saat VPN sedang jalan, beri petunjuk reconnect
+                // (persisten tersimpan; berlaku di koneksi berikutnya).
+                if (VpnEngine.running) {
+                    hud("Mode " + appIpModeLabel(pick)
+                            + " tersimpan - nyalakan ulang VPN utk menerapkan");
+                }
                 closeIpModeMenu(true);
             });
             box.addView(row, new android.widget.LinearLayout.LayoutParams(
@@ -1278,7 +1320,6 @@ public class MainActivity extends AppCompatActivity {
         int w = Math.max(anchor.getWidth(), (int) (250 * d));
         pw.setWidth(w);
         pw.setHeight(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-
         // Dialog host ditutup -> anchor lepas -> popup ikut ditutup
         // (PopupWindow tidak memantau detach anchor sendiri).
         anchor.addOnAttachStateChangeListener(
@@ -1304,11 +1345,15 @@ public class MainActivity extends AppCompatActivity {
         anchor.getLocationOnScreen(loc);
         int screenH = getResources().getDisplayMetrics().heightPixels;
         int spaceBelow = screenH - (loc[1] + anchor.getHeight());
+        // cy10.7: cap ukur mengikuti jumlah baris (5 mode x 48dp + padding
+        // box) - cap lama 200dp utk 3 baris membuat tinggi terukur lebih
+        // kecil dari tinggi nyata popup -> posisi "di atas chip" salah.
+        int measureCap = (int) (modes.length * 48 * d + 16 * d);
         box.measure(
                 android.view.View.MeasureSpec.makeMeasureSpec(w,
                         android.view.View.MeasureSpec.EXACTLY),
                 android.view.View.MeasureSpec.makeMeasureSpec(
-                        (int) (200 * d),
+                        measureCap,
                         android.view.View.MeasureSpec.AT_MOST));
         int ph = box.getMeasuredHeight();
         if (spaceBelow >= ph + (int) (8 * d)) {
@@ -1926,6 +1971,17 @@ public class MainActivity extends AppCompatActivity {
                 // sia-sia; header segar kembali <= tick pertama setelah
                 // resume (tak terlihat siapa pun selama background).
                 if (resumed) updateHeader(fRam, fCpu);
+                // cy10.7 (req g): ringkasan drop BLOCK dari VpnEngine ->
+                // logView (bebas glitch). Drain tiap tick saat foreground;
+                // antrean statis di VpnEngine dibatasi (tidak tumbuh tanpa
+                // batas saat background) dan baris TIDAK per paket - sudah
+                // diringkas per interval 30 detik per aplikasi di sana.
+                if (resumed) {
+                    String bl;
+                    while ((bl = VpnEngine.pollBlockLog()) != null) {
+                        log(LV_INFO, bl);
+                    }
+                }
                 // Tick ringan (header saja) saat user tidak di halaman
                 // Dashboard: GET_STATUS (binder + JSON), dirSize rekursif,
                 // dan sessionStats utk 1200 sesi tidak murah; boros CPU

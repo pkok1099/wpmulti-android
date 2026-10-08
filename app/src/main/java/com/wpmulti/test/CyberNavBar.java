@@ -184,23 +184,49 @@ public class CyberNavBar extends FrameLayout {
         // — mLayoutParams tidak pernah null di jalur manapun. Hasil ukur
         // identik (measure(UNSPECIFIED) membaca spec, bukan LP).
         int labelH = 0, labelW = 0;
-        for (String t : titles) {
+        // cy10.7: lebar TERUKUR per judul (bukan hanya maksimum) - dipakai
+        // utk menyamakan inset kiri-kanan konten pill (lihat di bawah).
+        int[] titleW = new int[titles.size()];
+        for (int i = 0; i < titles.size(); i++) {
             TextView probe = buildLabel(getContext());
             probe.setLayoutParams(new FrameLayout.LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-            probe.setText(t);
+            probe.setText(titles.get(i));
             probe.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED);
             labelH = Math.max(labelH, probe.getMeasuredHeight());
-            labelW = Math.max(labelW, probe.getMeasuredWidth());
+            titleW[i] = probe.getMeasuredWidth();
+            labelW = Math.max(labelW, titleW[i]);
         }
         float dp = getResources().getDisplayMetrics().density;
         int iconPx = (int) (ICON_DP * dp);
         int itemH = (int) ((ITEM_PAD_TOP_DP + ICON_DP + GAP_DP
                 + ITEM_PAD_BOTTOM_DP) * dp) + labelH;
         itemH = Math.max(itemH, (int) (ITEM_MIN * dp));
-        int contentW = Math.max(iconPx, labelW)
-                + (int) (2 * ITEM_PAD_SIDE_DP * dp);
+        int padSidePx = (int) (ITEM_PAD_SIDE_DP * dp);
+        int contentW = Math.max(iconPx, labelW) + 2 * padSidePx;
         int itemW = Math.max(contentW, (int) (ITEM_MIN * dp));
+
+        // cy10.7 (fix asimetri pill luar): semua item selebar itemW (label
+        // terlebar), tapi isi tiap item selebar labelNYA sendiri dan
+        // dipusatkan -> inset konten terhadap tepi pill bergantung lebar
+        // label ITEM TERAKHIR/TERTAMA. "Beranda" (glyph proporsional lebih
+        // lebar) vs "Setelan" membuat sisi kiri tampak lebih rapat.
+        // Solusi dari UKURAN NYATA: lebar isi item tepi w0/wN =
+        // max(ikon, label tepi itu) + 2*padSide; slack tepi = (itemW-w)/2.
+        // Tambahkan padding row di sisi yang longgar sebesar selisih
+        // slack kedua tepi -> inset kiri = inset kanan, item tetap
+        // seragam, indikator & sentuhan tidak berubah.
+        int extraLeft = 0, extraRight = 0;
+        if (titles.size() >= 2) {
+            int w0 = Math.max(iconPx, titleW[0]) + 2 * padSidePx;
+            int wN = Math.max(iconPx, titleW[titles.size() - 1])
+                    + 2 * padSidePx;
+            if (w0 > wN) extraLeft = (w0 - wN + 1) / 2;
+            else if (wN > w0) extraRight = (wN - w0 + 1) / 2;
+            row.setPadding(extraLeft, 0, extraRight, 0);
+        } else {
+            row.setPadding(0, 0, 0, 0);
+        }
 
         ColorStateList iconTint = getContext().getColorStateList(
                 R.color.nav_item_icon_tint);
@@ -398,14 +424,21 @@ public class CyberNavBar extends FrameLayout {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
-        // Posisi vertikal indikator: di tengah ikon (translationY murni —
-        // tidak memicu re-layout, sama seperti translationX horizontal).
+        // Posisi vertikal indikator (cy10.7): dipusatkan terhadap BLOK
+        // IKON+LABEL (= pusat vertikal item — kolom ikon+label memang
+        // Gravity.CENTER di dalam item), dihitung dari UKURAN NYATA hasil
+        // layout (row.getTop/item.getTop/item.getHeight), bukan dari
+        // asumsi padding/font: rumus lama memusatkan ke ikon dgn offset
+        // padTop+ikon/2 yang bisa meleset 1-2px saat ITEM_MIN meng-clamp
+        // atau truncation (int) pembulatan — sumber "pill sedikit lebih
+        // rendah". translationY murni — tidak memicu re-layout, sama
+        // seperti translationX horizontal.
         if (indicator.getHeight() > 0 && !items.isEmpty()) {
-            Item first = items.get(0);
-            float dp = getResources().getDisplayMetrics().density;
-            int iconCenterY = row.getTop() + first.view.getTop()
-                    + (int) (ITEM_PAD_TOP_DP * dp) + (int) (ICON_DP * dp) / 2;
-            float ty = iconCenterY - indicator.getHeight() / 2f
+            Item ref = findItem(selectedId);
+            if (ref == null) ref = items.get(0);
+            float contentCenterY = row.getTop() + ref.view.getTop()
+                    + ref.view.getHeight() / 2f;
+            float ty = contentCenterY - indicator.getHeight() / 2f
                     - indicator.getTop();
             indicator.setTranslationY(Math.max(-indicator.getTop(), ty));
         }

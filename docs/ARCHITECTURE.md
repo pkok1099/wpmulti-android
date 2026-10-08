@@ -1,7 +1,7 @@
 # ARCHITECTURE — wpmulti-android
 
 Peta arsitektur proyek untuk melanjutkan pekerjaan tanpa membaca seluruh
-riwayat commit. Terakhir diperbarui: **cy10.4** (2026-10-08).
+riwayat commit. Terakhir diperbarui: **cy10.7** (2026-10-09).
 
 ## 1. Struktur proyek
 
@@ -271,3 +271,68 @@ adb shell dumpsys gfxinfo com.wpmulti.test | grep -E "Total frames|Janky"
 ```
 Angka "CPU app" di dashboard = alat ukur bawaan (baca saat idle di
 Beranda, sebelum vs sesudah cy10.6).
+
+## 9. Mode IP per aplikasi — BLOCK v4/v6 (cy10.7)
+
+Semua data plane VPN ada di **Java** (`VpnEngine` — TUN reader/writer,
+mesin state TCP userspace via SOCKS5 unix socket engine, relay UDP/ICMP
+via WireGuard, forwarder DNS). Tidak ada perubahan engine Go.
+
+### Nilai mode & prioritas
+`vpn_app_ip_<pkg>` di SharedPreferences `vpn`: `""` (GLOBAL), `v4`, `v6`,
+`block4`, `block6`. Dibaca **sekali saat VPN start** (perubahan berlaku
+setelah VPN dinyalakan ulang — UI menampilkan petunjuk HUD bila mengubah
+mode saat VPN jalan). **Per-app menang atas global** (tertulis di legenda
+dialog): mode BLOCK ditegakkan di SEMUA mode global; mode v4/v6 (lama)
+tetap hanya berlaku saat global dual (perilaku cy10.3 tidak diubah).
+
+### Atribusi pemilik paket
+`ConnectivityManager.getConnectionOwnerUid(proto, local, remote)` (TCP 6 /
+UDP 17; API 29+, minSdk 34) → `getPackagesForUid` → mode. Hasil di-cache
+per 4-tuple (`ownerCache`, cap 2048, aman seumur sesi karena mode hanya
+dibaca saat start). **Fail-open**: uid tak dikenal → diizinkan. ICMP
+tidak bisa diatribusikan (API hanya TCP/UDP) — lihat KNOWN_ISSUES §8.
+
+### Penegakan BLOCK di TUN (req 2a+2b)
+| Paket dari app BLOCK | Perlakuan |
+|---|---|
+| TCP SYN versi diblok | **RST** dari "tujuan" (sendTcp ack=seq+1 flags 0x14) → connect() gagal seketika |
+| TCP non-SYN versi diblok | RST (jalur stray generik — koneksi memang tak pernah terbentuk) |
+| UDP non-DNS versi diblok | **DROP + ICMP** dest-unreachable: v4 type 3 code 1 (host unreachable), v6 type 1 code 0 (no route) — paket asli dikutip (RFC 792/4443) agar kernel mengaitkan error ke socket app |
+| DNS (port 53, server apa pun) | TIDAK di-drop — dijawab (lihat bawah) |
+| ICMP echo | tidak bisa diatribusikan → tetap di-relay (celah, §8) |
+
+**Capture (req 2a)**: route VPN global per-TUN. Bila ada app BLOCK dan
+global ≠ dual, TUN otomatis dinaikkan ke **dual-capture** (alamat + route
+versi yang diblok ikut ditambahkan) supaya blok ditegakkan tanpa jalur
+bypass. Konsekuensi: trafik versi "bypass" app LAIN kini ikut tunnel
+(dulunya direct) — dicatat di log start & KNOWN_ISSUES §8. Split tunnel
+sistem tetap berlaku di atasnya: app yang di-bypass (deny-list / di luar
+allow-list) tidak pernah masuk TUN → BLOCK tak bisa ditegakkan untuk
+mereka (batasan fundamental VpnService).
+
+### DNS (req 2c)
+Untuk app BLOCK: query **A** (block4) / **AAAA** (block6) dijawab LOKAL
+dengan **NOERROR + answer kosong (NODATA)** — ID diecho, QR=1, RD
+disalin, RA=1, QDCOUNT=1, ANCOUNT=0, question diecho. **BUKAN NXDOMAIN**
+(negatif-cache akan menghapus nama, bukan versinya). Query versi yang
+diizinkan diteruskan normal; upstream-nya diarahkan MENGHINDARI versi
+yang diblok via tabel counterpart resolver yang sama (Cloudflare/Google/
+Quad9/OpenDNS; plain + DoT literal — DoH/DoQ mengikuti target, celah §8).
+Gagal connect counterpart (mis. jaringan riil tanpa v6) → fallback
+upstream asli (DNS fungsional > kemurnian transport socket kita).
+
+### Log (req g)
+`blockStats` per app {drop v4/v6 interval+total, dns NODATA interval+
+total} → sweeper memancarkan **satu baris per app per interval 30 dtk**
+(bukan per paket) ke antrean statis `blockLog` (cap 200) → didrain thread
+monitor MainActivity ke `log()` → logView (bebas glitch). Ringkasan
+parsial terakhir dipancarkan saat cleanup.
+
+### Verifikasi statis
+Wire-format diverifikasi harness Java murni (`scripts` workspace agent,
+40 assertion): parser qname/qtype (termasuk fail-open pendek/QDCOUNT≠1/
+terpotong), header NODATA (NOERROR+0 answer, RD diecho), ICMP 3/1 & 1/0
+(arah src/dst, kutipan, cap 536/1232), checksum IP/ICMP/pseudo-v6/RST
+semua valid. Build debug + release/R8 lolos; simbol & string BLOCK
+terverifikasi di dex kedua build.
