@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Disintegrate glitch (cy7): kebalikan materialize - alpha flicker
+     turun 4 langkah (korupsi - pecah - fragment - hilang) + micro scale
+     naik + offset Y kecil ke atas. Dipakai window dialog & popup dropdown
+     saat MENUTUP. Berakhir 0.0 alpha -> window gone, tidak ada sisa. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="180"
+    android:fillAfter="false"
+    android:fillEnabled="false">
+
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.45"
+        android:startOffset="0"
+        android:duration="45" />
+    <alpha
+        android:fromAlpha="0.85"
+        android:toAlpha="0.2"
+        android:startOffset="50"
+        android:duration="45" />
+    <alpha
+        android:fromAlpha="0.6"
+        android:toAlpha="0.55"
+        android:startOffset="100"
+        android:duration="35" />
+    <alpha
+        android:fromAlpha="0.2"
+        android:toAlpha="0.0"
+        android:startOffset="140"
+        android:duration="40" />
+
+    <scale
+        android:fromXScale="1.0"
+        android:toXScale="1.02"
+        android:fromYScale="1.0"
+        android:toYScale="0.98"
+        android:pivotX="50%"
+        android:pivotY="42%"
+        android:startOffset="0"
+        android:duration="180" />
+
+    <translate
+        android:fromYDelta="0"
+        android:toYDelta="-2%"
+        android:startOffset="0"
+        android:duration="180" />
+</set>

@@ -25,10 +25,14 @@
     <application
         android:label="Wpmulti Test"
         android:theme="@style/Theme.WpmultiTest"
-        android:usesCleartextTraffic="true">
-        <!-- C2: rotasi tidak lagi membuat ulang activity (engineState
-             instance tidak ter-reset). Lapisan kedua: onCreate tetap
-             me-resync dari Mobile.isRunning() untuk kasus process death. -->
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
+        <!-- Fase 1 (targetSdk 36): predictive back diaktifkan di level
+             aplikasi. MainActivity menimpanya dengan false eksplisit agar
+             perilaku tombol back deterministik: default back = finish
+             activity (engine/VPN berjalan di service terpisah).
+             TestActivity & VpnControlActivity mewarisi true - keduanya
+             tanpa intercept back (noHistory), aman. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

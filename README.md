@@ -120,6 +120,7 @@ Keystore release dibaca dari env `WPMULTI_STORE_*` (tidak ada rahasia di repo).
 | 1.9 | Palet "Orkid Tegas" diekstrak dari image referensi: light primary #8D32AE / container #FFDAF3, night primary #E5A0E2 / surface #170F1C, sidebar violet #261632 + divider tint orkid, launcher bg #48227E, sidebar text -> token |
 | 1.8 | Sharpening: sudut 6/10/14 -> 4/6/8dp (kotak, tegas), emoji teks diganti vector Material Symbols (menu/play/stop/dot status), MaterialButton icon di btnEngine/vpnToggleBtn/btnMenu, ripple sidebar |
 | 2.0 | Rombak total komposisi UI: bottom nav 4 tab (Beranda/Sesi/Log/Setelan), sidebar drawer dihapus, hero card kontrol, kartu M3E, textfield outlined, rows IconButton, chart theme-aware + token tertiary |
+| 2.0.1 | Fix crash SpringAnimation saat state engine berubah (final position +Infinity dari SpringForce() default Double.MAX_VALUE, dynamicanimation 1.1.0); tema "Cybercore" dark-only menggantikan Orkid Tegas: neon cyan #22D3EE + magenta #F0ABFC di kanvas #0B1119, values-night dihapus (identitas gelap tunggal), colorSecondaryContainer remap global, warna status -> resource status_*, angka throughput monospace |
 
 ## Kredit & lisensi
 

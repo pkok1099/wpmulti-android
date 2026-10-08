@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Checkbox cybercore (cy10): kotak tegas 20dp, stroke cyan saat
+     checked / outline redup saat unchecked, isi near-black pekat +
+     check mark cyan. Dipakai android:button pada
+     Widget.Wpmulti.CheckBox (dialog Pilih aplikasi) - terhubung
+     dengan glitch checked/unchecked yang sudah ada di listener row.
+
+     cy10.2 FIX "centang terlalu ke kiri": box digeser +2dp dari tepi
+     kiri dialog lewat offset android:left="2dp" pada SEMUA item di
+     KEDUA state. Kenapa di drawable, bukan setPadding: pada
+     CompoundButton (AOSP 14/15/16, terverifikasi dari source) button
+     drawable digambar di tepi KIRI view (x=0, padding diabaikan) dan
+     teks mulai di paddingLeft + intrinsicWidth drawable - sehingga
+     padding kiri hanya menggeser TEKS menjauh dari box (bug cy10.1).
+     Dengan offset ini: intrinsic 22dp (20dp box + 2dp offset) ->
+     box digambar di [2dp..22dp], teks ikut +2dp, gap box->teks
+     (padding kiri 16dp) TIDAK berubah. Kedua state diberi struktur
+     layer-list + ukuran eksplisit yang identik agar posisi box/teks
+     sejajar sempurna antara checked <-> unchecked (tidak ada shift
+     teks saat toggle) dan tidak bergantung pada fallback ukuran. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <layer-list>
+            <item
+                android:left="2dp"
+                android:width="20dp"
+                android:height="20dp"
+                android:gravity="center">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/field_terminal_bg" />
+                    <stroke
+                        android:width="1.5dp"
+                        android:color="@color/m3_primary" />
+                    <corners android:radius="2dp" />
+                </shape>
+            </item>
+            <item
+                android:left="2dp"
+                android:width="12dp"
+                android:height="12dp"
+                android:gravity="center">
+                <vector
+                    android:width="12dp"
+                    android:height="12dp"
+                    android:viewportWidth="24"
+                    android:viewportHeight="24">
+                    <path
+                        android:pathData="M4,13 L9.5,18.5 L20,6"
+                        android:strokeColor="@color/m3_primary"
+                        android:strokeWidth="3.4"
+                        android:strokeLineCap="square"
+                        android:fillType="evenOdd" />
+                </vector>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <item
+                android:left="2dp"
+                android:width="20dp"
+                android:height="20dp"
+                android:gravity="center">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/field_terminal_bg" />
+                    <stroke
+                        android:width="1.5dp"
+                        android:color="@color/m3_outline" />
+                    <corners android:radius="2dp" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>
