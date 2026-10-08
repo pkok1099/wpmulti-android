@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.5] — 2026-10-08
+
+### Fixed
+- **Crash startup (NPE) `CyberNavBar.setMenu`** — cy10.4 as-pushed crash
+  DETERMINISTIK di setiap cold start (terlihat di device Android 16/One
+  UI; berlaku di semua API 34+). Akar (docs/KNOWN_ISSUES.md §7, diverifikasi
+  ke source AOSP): probe ukur label dipakai ulang TANPA parent →
+  `measure` iterasi 1 membentuk `mLayout` → `setText` iterasi 2 masuk
+  `TextView.checkForRelayout()` yang pernyataan pertamanya membaca
+  `mLayoutParams.width` TANPA null-guard (android-14:11246, main:11679) →
+  probe tak pernah di-addView/setLayoutParams → NPE. Fix by construction:
+  (1) probe BARU per judul + `setLayoutParams(WRAP_CONTENT)` sebelum
+  `setText`/`measure`; (2) label item dipasang (`addView`, LP terisi)
+  sebelum `setText`. `measure(UNSPECIFIED)` membaca spec, bukan LP →
+  dimensi item/pill/glitch identik, murni fix crash. Catatan trace: nomor
+  baris `:169`/`:902` dari user = remap R8 build release, bukan baris
+  source sebenarnya.
+
 ## [cy10.4] — 2026-10-08
 
 ### Added

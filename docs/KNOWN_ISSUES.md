@@ -137,6 +137,53 @@ tertanda aktif), chip 48dp (area sentuh), legenda di bawah search bar.
   6883b3e.
 - Crash lambda effectively-final: a8bdd61.
 
+### 7. Crash startup: NPE `TextView.checkForRelayout` di
+###    `CyberNavBar.setMenu` (cy10.5)
+**Gejala**: app langsung force-close saat dibuka (device Android 16 /
+One UI): `NullPointerException: Attempt to read from field
+'int android.view.ViewGroup$LayoutParams.width' on a null object
+reference in TextView.checkForRelayout()` dari `CyberNavBar.setMenu` ←
+`MainActivity.onCreate`. Nomor baris di trace (`:169`/`:902`) TIDAK cocok
+dengan source karena build release me-remap posisi lewat R8
+(`r8-map-id-…`); posisi asli: blok probe ukur label di `setMenu`, dipanggil
+dari setup navbar `onCreate` (aktual: `MainActivity.java:2646`).
+
+**Akar (kode + source framework, bukan tebakan)**: `setMenu` mengukur
+label dengan SATU `probe` TextView yang DIPAKAI ULANG antar judul.
+`buildLabel()` membuat view TANPA parent dan TANPA `setLayoutParams` —
+`mLayoutParams` HANYA terisi lewat `setLayoutParams()`/`addView()`.
+Rantai framework (diverifikasi langsung ke source AOSP):
+1. `TextView.setText` hanya memanggil `checkForRelayout()` **jika
+   `mLayout != null`** (android-14.0.0_r1:7178). Iterasi 1 aman — view
+   masih segar, `mLayout` null.
+2. `probe.measure()` → `onMeasure` → `makeNewLayout` → **`mLayout`
+   terbentuk**.
+3. Iterasi 2 (`R.menu.bottom_nav` = 4 judul → SELALU terjadi):
+   `setText("Sesi")` → `mLayout != null` → `checkForRelayout()` —
+   **pernyataan PERTAMANYA membaca `mLayoutParams.width` TANPA null-guard**
+   (android-14.0.0_r1:11246; AOSP main/16:11679) → `mLayoutParams == null`
+   → **NPE deterministik di setiap cold start**. Bukan spesifik Samsung:
+   guard null tidak ada sejak AOSP 14 (minSdk proyek) — cy10.4
+   as-pushed mustahil start di API level mana pun.
+
+**Fix (by construction, hasil ukur identik)**:
+- Probe BARU per judul + `setLayoutParams(WRAP_CONTENT)` eksplisit
+  sebelum `setText`/`measure` — dua lapis: `setText` selalu pada view
+  segar (`mLayout` null → jalur `checkForRelayout` tak tersentuh), dan
+  `mLayoutParams` tidak pernah null.
+- Label item: `addView` (LP terisi) SEBELUM `setText` — kontrak sama.
+- `measure(UNSPECIFIED, UNSPECIFIED)` membaca spec yang dilempar, bukan
+  LP → dimensi item/pill tidak berubah sedikitpun.
+
+**Pencegahan (aturan permanen)**:
+- TextView probe ukur TANPA parent WAJIB: LP eksplisit + `setText` hanya
+  selama view segar (sebelum measure pertama) — atau ukur via
+  `TextPaint.getFontMetricsInt`/`measureText` tanpa view.
+- Aturan "LP dulu, teks kemudian" untuk SEMUA view programatik: pasang ke
+  parent (atau set LP) sebelum `setText`.
+- Rombak UI besar = cold-start smoke test (buka app SEKALI) sebelum
+  push/APK dibagikan — bug ini deterministik, tertangkap <1 detik.
+
 ## B. Item menunggu konfirmasi user (K1–K7, dari audit cy10.2)
 
 | # | Temuan | Mengapa belum diubah | Kalau dijalankan |
@@ -154,7 +201,10 @@ tertanda aktif), chip 48dp (area sentuh), legenda di bawah search bar.
 Checklist cy10.3 no.1/2/4/5/6 (mode IP, search sticky, checkbox, mode efek,
 logView) masih berlaku. Checklist navbar DIGANTI:
 
-3. **Navbar CyberNavBar (cy10.4)** — uji BERULANG dan bergantian:
+3. **Navbar CyberNavBar (cy10.4 + fix crash cy10.5)** — uji BERULANG dan
+   bergantian:
+   - cold start: app terbuka TANPA crash (fix cy10.5 NPE §7 — cy10.4
+     as-pushed pasti crash; jika masih crash, kirim trace);
    - pindah tab CEPAT berulang (10-20x bolak-balik, juga acak) → TIDAK ADA
      kotak hitam, sudut persegi di ujung kiri/kanan pill, ghost shadow, atau
      sisa alpha/transform; ikon/label tetap utuh & terbaca;
