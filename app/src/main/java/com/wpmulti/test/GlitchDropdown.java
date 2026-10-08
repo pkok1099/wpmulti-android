@@ -77,6 +77,28 @@ final class GlitchDropdown {
     private static int sPulseCount;
     private static final Handler H = new Handler(Looper.getMainLooper());
 
+    // cy10.2: Handler ini MILIK SENDIRI (terpisah dari GlitchText.H)
+    // sehingga tidak ikut dibersihkan GlitchText.stop() di onPause -
+    // dulunya pulse terus berdetak tiap 380-650ms di background selama
+    // dropdown dibiakan terbuka (boros CPU/baterai, tak terlihat siapa
+    // pun). pausePulse()/resumePulse() dipanggil MainActivity.onPause/
+    // onResume. Visual identik: popup tak terlihat saat background;
+    // denyut melanjutkan kadensi acak yang sama setelah kembali.
+
+    /** Hentikan loop pulse (onPause) - popup tetap terbuka, beku diam. */
+    static void pausePulse() {
+        H.removeCallbacks(sPulse);
+    }
+
+    /** Lanjutkan pulse bila popup masih terbuka dan efek aktif (onResume). */
+    static void resumePulse() {
+        if (sOpen != null && sOpenList != null && sOpen.isShowing()
+                && GlitchText.isGlitchEnabled()) {
+            H.removeCallbacks(sPulse);
+            H.postDelayed(sPulse, 380 + GlitchText.rndInt(270));
+        }
+    }
+
     private GlitchDropdown() {}
 
     /** Pulse berkala: satu item acak mikro-terkorupsi selama terbuka. */

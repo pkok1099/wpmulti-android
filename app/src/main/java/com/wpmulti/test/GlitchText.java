@@ -215,6 +215,11 @@ public final class GlitchText {
     private static int BLOCK_BG;           // blok datamosh acid transparan
     private static int SCAN_COLOR;         // garis scanline (cyan 30%)
     private static float DENSITY;
+    // cy10.2: pola bitmap scanline 4x3 dibuat SEKALI di init() - dulu
+    // tiap panggilan scanline() mengalokasikan Bitmap+Canvas+Paint baru
+    // (dialog/dropdown buka). Konten piksel identik -> visual identik;
+    // BitmapDrawable tetap per-host (bounds & alpha per panggilan).
+    private static Bitmap sScanBitmap;
     private static boolean running;
     private static boolean tickQueued;
     private static boolean restoreQueued;
@@ -248,6 +253,13 @@ public final class GlitchText {
         BURST_SHADOW_CYAN = ctx.getColor(R.color.glitch_shadow_cyan);
         BLOCK_BG = ctx.getColor(R.color.glitch_block);
         SCAN_COLOR = ctx.getColor(R.color.glitch_scan);
+        // cy10.2: pola scanline dibuat sekali (piksel identik dengan
+        // yang dulu dibuat per panggilan).
+        sScanBitmap = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(sScanBitmap);
+        Paint p = new Paint();
+        p.setColor(SCAN_COLOR);
+        c.drawRect(0f, 0f, 4f, 1f, p);
     }
 
     // ---------------- registry ----------------
@@ -731,15 +743,13 @@ public final class GlitchText {
     public static void scanline(View host, int durationMs, int lineAlpha) {
         if (host == null || !isGlitchEnabled()) return;
         clearScanline(host); // idempotent - tidak menumpuk
+        if (sScanBitmap == null) return; // init belum jalan: lewati diam-diam
         int w = host.getWidth();
         int h = host.getHeight();
         if (w <= 0 || h <= 0) return; // belum layout: lewati diam-diam
-        Bitmap b = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(b);
-        Paint p = new Paint();
-        p.setColor(SCAN_COLOR);
-        c.drawRect(0f, 0f, 4f, 1f, p);
-        BitmapDrawable d = new BitmapDrawable(host.getResources(), b);
+        // cy10.2: bitmap pola dipakai ulang (dibuat sekali di init());
+        // hanya wrapper drawable yang per-host (bounds + alpha).
+        BitmapDrawable d = new BitmapDrawable(host.getResources(), sScanBitmap);
         d.setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
         d.setAlpha(Math.max(0, Math.min(255, lineAlpha)));
         d.setBounds(0, 0, w, h);
@@ -1115,6 +1125,13 @@ public final class GlitchText {
                     if (n != null) burst(n, MINOR);
                 }
             }
+            // cy10.2 CATATAN: cadence tick, ukuran pool ambient, dan
+            // restore tak-bersyarat ini SENGAJA dipertahankan persis -
+            // memfilter pool (mis. hanya isShown) akan mengubah statistik
+            // pick -> frekuensi ambient yang TERLIHAT berubah; memindah
+            // scheduleRestore ke dalam cabang burst akan mengubah pola
+            // pemotongan umur span saat beririsan dengan event. Hemat CPU
+            // yang aman dilakukan di guard burst() (lihat bawah).
             scheduleTick(950 + RND.nextInt(550));
             scheduleRestore(120 + RND.nextInt(70));
         }
@@ -1153,7 +1170,16 @@ public final class GlitchText {
      */
     private static void burst(Node node, int level, int rs, int re) {
         TextView tv = node.ref.get();
-        if (tv == null || tv.getVisibility() != View.VISIBLE) return;
+        // cy10.2: guard diperkuat getVisibility -> isShown (attached +
+        // SEMUA leluhur VISIBLE). VIEW TAK TERLIHAT (di bawah halaman
+        // GONE, row scrap, container dialog yang sudah ditutup) memang
+        // TIDAK PERNAH menggambar piksel - dulu burst tetap menjalankan
+        // setText span + shadow + PENDING/SHADOWED churn SIA-SIA (mis.
+        // label header dashboard yang di-setText monitor tiap 2 dtk
+        // selama user di halaman lain). Distribusi PEMILIHAN target &
+        // piksel yang dihasilkan TIDAK berubah: view yang tampak tetap
+        // isShown=true -> jalur identik; view tersembunyi tetap 0 piksel.
+        if (tv == null || !tv.isShown()) return;
         CharSequence cur = tv.getText();
         String s = cur == null ? "" : cur.toString();
         if (s.trim().isEmpty()) return;

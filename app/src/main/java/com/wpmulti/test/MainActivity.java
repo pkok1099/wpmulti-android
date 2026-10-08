@@ -1075,18 +1075,22 @@ public class MainActivity extends AppCompatActivity {
                 if (cv == null) {
                     // cy10: checkbox cybercore (Widget.Wpmulti.CheckBox
                     // via tema dialog: kotak tegas + check cyan + teks
-                    // monospace). Padding dp (dulu px mentah = terlalu
-                    // rapat) + label SATU BARIS ellipsize - nama aplikasi/
-                    // package super panjang tidak lagi saling menimpa
-                    // (laporan screenshot) dan list tetap padat terbaca.
-                    // cy10.1: kiri 16dp -> 18dp (+2dp SAJA - laporan
-                    // "centang terlalu ke kiri"; jangan lebih). Ini satu-
+                    // monospace). Padding dp + label SATU BARIS ellipsize.
+                    // cy10.2 FIX POSISI CENTANG: padding kiri kembali 16dp
+                    // (kembali ke gap box->teks asli) - geser box +2dp
+                    // dilakukan DI DRAWABLE (cb_cyber.xml, inset kiri 2dp),
+                    // BUKAN lewat padding: pada CompoundButton (AOSP 14/15/
+                    // 16) button drawable digambar di tepi KIRI view (x=0,
+                    // padding DIABAIKAN) dan teks mulai di paddingLeft +
+                    // lebar drawable - jadi setPadding hanya MENJAUHKAN teks
+                    // dari box (gejala yang dilaporkan), bukan menggeser box.
+                    // Dengan inset di drawable: box +2dp dari tepi dialog,
+                    // teks ikut +2dp, gap box->teks TIDAK berubah. Ini satu-
                     // satunya dialog ber-checkbox -> konsisten by default.
-                    // Kanan/vertikal + jarak box-ke-teks (paddingStart dari
-                    // style) tidak berubah: teks row hanya ikut bergeser
-                    // 2dp, tinggi/lebar row tetap (tidak ada layout shift).
+                    // Kanan/vertikal tidak berubah; tinggi/lebar row tetap
+                    // (intrinsic 22dp vs 20dp hanya menggeser teks 2dp).
                     cb = new android.widget.CheckBox(dialogCtx());
-                    cb.setPadding((int) (18 * d), (int) (10 * d),
+                    cb.setPadding((int) (16 * d), (int) (10 * d),
                             (int) (16 * d), (int) (10 * d));
                     cb.setSingleLine(true);
                     cb.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -2707,6 +2711,9 @@ public class MainActivity extends AppCompatActivity {
         // Task 32: loop wander GlitchText berhenti + semua kilatan
         // dipulihkan saat activity tidak terlihat (hemat CPU/baterai).
         GlitchText.stop();
+        // cy10.2: pulse dropdown terbuka juga berhenti (GlitchDropdown
+        // punya Handler sendiri - tidak ikut GlitchText.stop()).
+        GlitchDropdown.pausePulse();
         super.onPause();
     }
 
@@ -2721,6 +2728,9 @@ public class MainActivity extends AppCompatActivity {
         // Task 32: nyalakan lagi wander glitch (registry dipertahankan;
         // ref mati di-purge di dalam start()).
         GlitchText.start(this);
+        // cy10.2: denyut dropdown yang tertutup saat pause dilanjutkan
+        // (bila masih terbuka & efek aktif; kadensi acak sama).
+        GlitchDropdown.resumePulse();
         if (engineState == ST_RUNNING) {
             // pasang ulang dot lalu denyut lagi (drawable bisa
             // tertinggal alpha rendah sebelum onPause)
