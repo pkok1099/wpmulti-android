@@ -1472,6 +1472,7 @@ public class MainActivity extends AppCompatActivity {
                     GlitchText.registerTree(chip); // Task 32: chip sesi ikut wander
                     // cy6: chip baru "muncul karena glitch" (materialize).
                     GlitchText.glitchAppear(chip);
+                    final View chipV = chip; // salinan effectively-final utk lambda
                     final TextView detailCh =
                             chip.findViewById(R.id.chipDetail);
                     chip.setOnClickListener(v -> {
@@ -1485,7 +1486,7 @@ public class MainActivity extends AppCompatActivity {
                             // detail glitch + chip tergemetrek MINOR.
                             GlitchText.glitchNow(detailCh);
                         }
-                        GlitchText.glitchJitter(chip, GlitchText.MINOR);
+                        GlitchText.glitchJitter(chipV, GlitchText.MINOR);
                     });
                 }
                 View dot = chip.findViewById(R.id.chipDot);
