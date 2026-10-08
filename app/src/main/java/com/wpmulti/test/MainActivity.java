@@ -17,6 +17,7 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -310,12 +311,34 @@ public class MainActivity extends AppCompatActivity {
             // & bounce (morph/bounce hanya saat state benar2 berubah).
             boolean fxChanged = (st != lastFxState);
             lastFxState = st;
-            heroLoading.setVisibility(st == ST_STARTING
-                    || st == ST_STOPPING ? View.VISIBLE : View.GONE);
+            // cy6: loading indicator muncul/hilang KARENA GLITCH (bukan
+            // toggle visibility kasar). Sembunyi ditunda 110ms agar flicker
+            // "de-rez" terlihat; guard state mencegah GONE salah waktu.
+            if (st == ST_STARTING || st == ST_STOPPING) {
+                heroLoading.setVisibility(View.VISIBLE);
+                GlitchText.glitchAppear(heroLoading);
+            } else if (heroLoading.getVisibility() == View.VISIBLE) {
+                GlitchText.glitchDisappear(heroLoading);
+                heroLoading.postDelayed(() -> {
+                    if (engineState != ST_STARTING
+                            && engineState != ST_STOPPING) {
+                        heroLoading.setVisibility(View.GONE);
+                    } else {
+                        // cy6: guard gagal (state balik STARTING) - pulihkan
+                        // alpha agar elemen tidak tertinggal transparan.
+                        heroLoading.setAlpha(1f);
+                    }
+                }, 110);
+            }
             updateDotPulse(st);
             if (fxChanged) {
                 morphEngineButton(btn, st);
                 bounceEngine(btn);
+                // cy6: perubahan state engine = glitch MAJOR di kartu hero
+                // (statusBar/monGo/btnEngine ikut "kehilangan sinkron").
+                View hero = btn.getParent() instanceof View
+                        ? (View) btn.getParent() : null;
+                if (hero != null) GlitchText.glitchMajor(hero);
             }
             updateVpnUi();
         });
@@ -473,8 +496,13 @@ public class MainActivity extends AppCompatActivity {
             v.setVisibility(id == pageId ? View.VISIBLE : View.GONE);
             if (id == pageId) shown = v;
         }
-        // Task 33: pindah halaman = seluruh teks halaman tujuan kilat glitch
-        if (shown != null) GlitchText.glitchTree(shown);
+        // cy6: pindah halaman = glitch MAJOR (halaman "reconstruct karena
+        // glitch") + pill nav ikut tergemetrek MINOR sebagai feedback tap.
+        if (shown != null) GlitchText.glitchMajor(shown);
+        View navPillGlitch = findViewById(R.id.navPill);
+        if (navPillGlitch != null) {
+            GlitchText.glitchJitter(navPillGlitch, GlitchText.MINOR);
+        }
         if (pageAnimView != null) pageAnimView.animate().cancel();
         if (shown != null && animScale() > 0f) {
             pageAnimView = shown;
@@ -515,11 +543,29 @@ public class MainActivity extends AppCompatActivity {
                 vpnStatsView.setText("koneksi TCP: " + VpnEngine.connCount()
                         + "\nRX: " + fmtBytes(VpnEngine.bytesRx())
                         + " | TX: " + fmtBytes(VpnEngine.bytesTx()));
-                vpnStatsView.setVisibility(View.VISIBLE);
+                // cy6: stats muncul KARENA GLITCH hanya saat transisi
+                // GONE -> VISIBLE (updateVpnUi dipanggil tiap tick monitor;
+                // tanpa guard, glitch terpicu berulang tiap 2 dtk).
+                if (vpnStatsView.getVisibility() != View.VISIBLE) {
+                    vpnStatsView.setVisibility(View.VISIBLE);
+                    GlitchText.glitchAppear(vpnStatsView);
+                }
             } else {
                 vpnStatsView.setText("");
-                // Fase 3: teks kosong tidak menyisakan ruang kosong.
-                vpnStatsView.setVisibility(View.GONE);
+                // cy6: hilang KARENA GLITCH - de-rez dulu 110ms, baru GONE
+                // (guard VpnEngine.running mencegah GONE salah waktu).
+                if (vpnStatsView.getVisibility() == View.VISIBLE) {
+                    GlitchText.glitchDisappear(vpnStatsView);
+                    vpnStatsView.postDelayed(() -> {
+                        if (!VpnEngine.running) {
+                            vpnStatsView.setVisibility(View.GONE);
+                        } else {
+                            // cy6: guard gagal (VPN nyambung lagi <110ms) -
+                            // pulihkan alpha agar tidak transparan permanen.
+                            vpnStatsView.setAlpha(1f);
+                        }
+                    }, 110);
+                }
             }
             vpnToggleBtn.setText(vpnOn ? "DISCONNECT VPN"
                     : "CONNECT VPN");
@@ -769,6 +815,9 @@ public class MainActivity extends AppCompatActivity {
                 tv.setText(label);
                 String key = "vpn_app_ip_" + pkg;
                 btn.setText(appIpModeLabel(vp.getString(key, "")));
+                // cy6: baris dialog ikut sistem glitch (dedup di dalam).
+                GlitchText.registerTree(row);
+                GlitchText.installTouch(row);
                 btn.setOnClickListener(v -> {
                     String cur = vp.getString(key, "");
                     String next = cur.isEmpty() ? "v4"
@@ -776,6 +825,10 @@ public class MainActivity extends AppCompatActivity {
                     if (next.isEmpty()) vp.edit().remove(key).apply();
                     else vp.edit().putString(key, next).apply();
                     btn.setText(appIpModeLabel(next));
+                    // cy6: mode per IP berubah = glitch MEDIUM pada baris
+                    // (label tombol ikut glitchNow - teks berganti mode).
+                    GlitchText.glitchNow(btn, GlitchText.MEDIUM);
+                    GlitchText.glitchTree(row, GlitchText.MEDIUM);
                     updateVpnIpModeCount();
                 });
                 return row;
@@ -783,11 +836,18 @@ public class MainActivity extends AppCompatActivity {
         };
         addSearchHeader(lv, apps, shown, ad);
         lv.setAdapter(ad);
-        new android.app.AlertDialog.Builder(this)
+        // cy6: dialog "Mode IP per aplikasi" muncul KARENA GLITCH + seluruh
+        // isi (judul, tombol, list) terdaftar ke sistem glitch.
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Mode IP per aplikasi")
                 .setView(lv)
                 .setPositiveButton("Tutup", null)
                 .show();
+        View dec = dlg.getWindow() != null
+                ? dlg.getWindow().getDecorView() : lv;
+        GlitchText.registerTree(dec);
+        GlitchText.installTouch(dec);
+        GlitchText.glitchAppear(lv);
     }
 
 
@@ -822,16 +882,23 @@ public class MainActivity extends AppCompatActivity {
                 cb.setText(label);
                 cb.setOnCheckedChangeListener(null);
                 cb.setChecked(checked.contains(pkg));
+                // cy6: baris dialog ikut sistem glitch (dedup di dalam).
+                GlitchText.registerTree(cb);
+                GlitchText.installTouch(cb);
                 cb.setOnCheckedChangeListener((b, isC) -> {
                     if (isC) checked.add(pkg);
                     else checked.remove(pkg);
+                    // cy6: pilihan aplikasi berubah = glitch MINOR pada
+                    // checkbox itu sendiri (feedback pilihan tercatat).
+                    GlitchText.glitchNow(cb, GlitchText.MINOR);
                 });
                 return cb;
             }
         };
         addSearchHeader(lv, apps, shown, ad);
         lv.setAdapter(ad);
-        new android.app.AlertDialog.Builder(this)
+        // cy6: dialog "Pilih aplikasi" (Split Tunnel) muncul KARENA GLITCH.
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("Pilih aplikasi")
                 .setView(lv)
                 .setPositiveButton("OK", (d, w) -> {
@@ -842,6 +909,11 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Batal", null)
                 .show();
+        View dec = dlg.getWindow() != null
+                ? dlg.getWindow().getDecorView() : lv;
+        GlitchText.registerTree(dec);
+        GlitchText.installTouch(dec);
+        GlitchText.glitchAppear(lv);
     }
 
 
@@ -858,8 +930,8 @@ public class MainActivity extends AppCompatActivity {
             hudToast.removeCallbacks(hudHide);
             hudToast.setText("> " + msg);
             hudToast.setVisibility(android.view.View.VISIBLE);
-            hudToast.setAlpha(0f);
-            hudToast.animate().alpha(1f).setDuration(90).start();
+            // cy6: HUD muncul KARENA GLITCH (materialize), bukan fade.
+            GlitchText.glitchAppear(hudToast);
             hudToast.postDelayed(hudHide, 2400);
         });
     }
@@ -984,6 +1056,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---------- Config rows ----------
+    // cy6: indeks profile yang BARU ditambahkan (di-set onActivityResult
+    // sebelum rebuild) - row-nya di-glitch-appear spesifik; -1 = rebuild
+    // biasa (hapus/onCreate) -> container direkonstruksi dgn glitch MAJOR.
+    private int lastAddedProfileIdx = -1;
+
     private void rebuildConfigRows() {
         configContainer.removeAllViews();
         countFields.clear();
@@ -1039,17 +1116,28 @@ public class MainActivity extends AppCompatActivity {
             row.findViewById(R.id.del).setOnClickListener(v -> {
                 Profile rm = profiles.remove(idx);
                 if (rm.file.exists()) rm.file.delete();
+                lastAddedProfileIdx = -1; // hapus -> rekonstruksi container
                 rebuildConfigRows();
                 updateTotal();
                 log("profile dihapus: " + rm.name);
             });
             configContainer.addView(row);
             configRows.add(row);
+            // cy6: config baru "recovered karena glitch" pada ENTRY-nya
+            // sendiri (bukan sekadar flicker seluruh list).
+            if (idx == lastAddedProfileIdx) GlitchText.glitchAppear(row);
         }
         updateTotal();
         updateAddBtn();
-        // Task 33: config "muncul karena glitch" - flicker alpha + burst span
-        GlitchText.glitchAppear(configContainer);
+        // cy6: seluruh list yang direkonstruksi (hapus/onCreate-after-start)
+        // terasa "rebuild karena glitch" (MAJOR); penambahan row cukup
+        // MINOR di container (row barunya sudah MAJOR-style appear).
+        if (lastAddedProfileIdx >= 0) {
+            GlitchText.glitchView(configContainer, GlitchText.MINOR);
+        } else {
+            GlitchText.glitchMajor(configContainer);
+        }
+        lastAddedProfileIdx = -1;
         // terapkan lock jika engine tidak idle
         if (engineState != ST_IDLE) setEngineState(engineState);
     }
@@ -1096,7 +1184,9 @@ public class MainActivity extends AppCompatActivity {
         boolean running = EngineClient.get().snapshot().running;
         addProxyRow("SOCKS5", "127.0.0.1:1080", running);
         addProxyRow("HTTP", "127.0.0.1:8080", running);
-        GlitchText.glitchTree(proxyTable); // Task 33: tabel proxy "muncul karena glitch"
+        // cy6: tabel proxy rebuild = "muncul kembali karena glitch"
+        // (flicker + squeeze + jitter + burst MEDIUM).
+        GlitchText.glitchAppear(proxyTable);
         updateVpnUi(); // segarkan juga label proxy/VPN dari sumber yang sama
     }
 
@@ -1380,6 +1470,8 @@ public class MainActivity extends AppCompatActivity {
                     chipViews.put(idx, chip);
                     monSesiDetail.addView(chip);
                     GlitchText.registerTree(chip); // Task 32: chip sesi ikut wander
+                    // cy6: chip baru "muncul karena glitch" (materialize).
+                    GlitchText.glitchAppear(chip);
                     final TextView detailCh =
                             chip.findViewById(R.id.chipDetail);
                     chip.setOnClickListener(v -> {
@@ -1387,8 +1479,13 @@ public class MainActivity extends AppCompatActivity {
                                 != View.VISIBLE;
                         detailCh.setVisibility(show ? View.VISIBLE
                                 : View.GONE);
-                        if (show) expandedSess.add(idx);
-                        else expandedSess.remove(idx);
+                        if (show) {
+                            expandedSess.add(idx);
+                            // cy6: detail ter-expand "reconstruct": teks
+                            // detail glitch + chip tergemetrek MINOR.
+                            GlitchText.glitchNow(detailCh);
+                        }
+                        GlitchText.glitchJitter(chip, GlitchText.MINOR);
                     });
                 }
                 View dot = chip.findViewById(R.id.chipDot);
@@ -1418,6 +1515,7 @@ public class MainActivity extends AppCompatActivity {
         // buang chip sesi yang sudah tidak ada di snapshot terbaru
         java.util.Iterator<java.util.Map.Entry<Integer, View>> it =
                 chipViews.entrySet().iterator();
+        boolean anyChipGone = false;
         while (it.hasNext()) {
             java.util.Map.Entry<Integer, View> e = it.next();
             if (!seen.contains(e.getKey())) {
@@ -1425,8 +1523,11 @@ public class MainActivity extends AppCompatActivity {
                 it.remove();
                 prevSessAct.remove(e.getKey());
                 expandedSess.remove(e.getKey());
+                anyChipGone = true;
             }
         }
+        // cy6: chip yang hilang = container ikut "terganggu" sekali (MINOR)
+        if (anyChipGone) GlitchText.glitchView(monSesiDetail, GlitchText.MINOR);
     }
 
     // ---------- Start/Stop ----------
@@ -1880,7 +1981,8 @@ public class MainActivity extends AppCompatActivity {
         this.vpnAutoReconnect = vpnAutoReconnect;
         vpnAutoReconnect.setChecked(vprefs.getBoolean("auto_reconnect", true));
         vpnAutoReconnect.setOnCheckedChangeListener((b, checked) -> {
-                GlitchText.glitchTree((View) b.getParent()); // Task 33: setting berubah = glitch
+                // cy6: setting berubah = glitch MEDIUM pada section-nya.
+                GlitchText.glitchTree((View) b.getParent(), GlitchText.MEDIUM);
                 getSharedPreferences("vpn", MODE_PRIVATE).edit()
                         .putBoolean("auto_reconnect", checked).apply();
         });
@@ -1981,6 +2083,17 @@ public class MainActivity extends AppCompatActivity {
 
         // bottom navigation (4 tab) — pengganti navigasi drawer lama
         BottomNavigationView bnv = findViewById(R.id.bottomNav);
+        // cy6: tap di area nav = pill nav terglitch MINOR (feedback press
+        // sebelum transisi halaman MAJOR dijalankan showPage).
+        bnv.setOnTouchListener((v, ev) -> {
+            if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                View pillGlitch = findViewById(R.id.navPill);
+                if (pillGlitch != null) {
+                    GlitchText.glitchView(pillGlitch, GlitchText.MINOR);
+                }
+            }
+            return false; // tidak dikonsumsi: pilihan item tetap normal
+        });
         bnv.setOnItemSelectedListener(item -> {
             int id = item.getItemId();
             if (id == R.id.navHome) {
@@ -2237,6 +2350,9 @@ public class MainActivity extends AppCompatActivity {
                     while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
                 }
                 profiles.add(new Profile(name, out));
+                // cy6: tandai row baru -> rebuildConfigRows memberi glitch
+                // appear spesifik pada entry yang baru dibuat.
+                lastAddedProfileIdx = profiles.size() - 1;
                 rebuildConfigRows();
                 log("profile ditambah: " + name);
             } catch (Exception e) {
@@ -2274,6 +2390,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // cy6: hormati skala animator sistem (0 = "hapus animasi") -
+        // seluruh glitch dimatikan utk aksesibilitas.
+        GlitchText.setAnimScale(animScale());
         // Task 32: nyalakan lagi wander glitch (registry dipertahankan;
         // ref mati di-purge di dalam start()).
         GlitchText.start(this);
