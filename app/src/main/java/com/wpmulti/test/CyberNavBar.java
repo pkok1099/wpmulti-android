@@ -170,9 +170,24 @@ public class CyberNavBar extends FrameLayout {
         // Ukuran item: tinggi dari font + padding (label tidak terpotong);
         // lebar seragam mengikuti label terlebar + padding (pill mengikuti
         // ISI, konstan di semua ukuran layar — bukan 0.175x lebar layar).
-        TextView probe = buildLabel(getContext());
+        // cy10.5 (akar crash startup NPE — docs/KNOWN_ISSUES.md §7):
+        // TextView.setText() -> checkForRelayout() membaca mLayoutParams
+        // .width SEBAGAI PERNYATAAN PERTAMA (AOSP 14..16 TANPA null-guard;
+        // android-14.0.0_r1:11246, main:11679) dan hanya terpanggil saat
+        // mLayout != null. Probe lama (satu objek dipakai ulang) diukur di
+        // iterasi 1 -> mLayout terbentuk -> setText iterasi 2 (menu punya
+        // 4 judul) -> checkForRelayout -> probe TANPA parent/tanpa
+        // setLayoutParams = mLayoutParams NULL -> NPE pasti di cold start.
+        // Fix BY CONSTRUCTION, dua lapis: (1) probe BARU per judul — setText
+        // selalu terjadi saat view masih segar (mLayout null, jalur
+        // checkForRelayout tak tersentuh); (2) LP eksplisit sebelum apapun
+        // — mLayoutParams tidak pernah null di jalur manapun. Hasil ukur
+        // identik (measure(UNSPECIFIED) membaca spec, bukan LP).
         int labelH = 0, labelW = 0;
         for (String t : titles) {
+            TextView probe = buildLabel(getContext());
+            probe.setLayoutParams(new FrameLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
             probe.setText(t);
             probe.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED);
             labelH = Math.max(labelH, probe.getMeasuredHeight());
@@ -220,12 +235,14 @@ public class CyberNavBar extends FrameLayout {
 
             TextView label = buildLabel(getContext());
             label.setDuplicateParentStateEnabled(true);
-            label.setText(titles.get(i));
             if (textTint != null) label.setTextColor(textTint);
             LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
             llp.topMargin = (int) (GAP_DP * dp);
+            // cy10.5: pasang ke parent (LP terisi) SEBELUM setText —
+            // defence-in-depth kontrak "LP dulu, teks kemudian" (akar §7).
             col.addView(label, llp);
+            label.setText(titles.get(i));
 
             // Tekan item = feedback TEPAT SASARAN (pola tombol cy8: korupsi
             // label + micro displacement item — BUKAN jitter pill penuh).
