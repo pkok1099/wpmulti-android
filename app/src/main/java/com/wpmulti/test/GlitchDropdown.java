@@ -33,6 +33,13 @@ import android.widget.Spinner;
  * selalu return) - itulah sebabnya dropdown masih terasa seperti UI
  * Android biasa. Kini benar-benar aktif.
  *
+ * FIX cy8.1 (bug "semua dropdown tidak muncul"): pw.setContentView(lv)
+ * TIDAK pernah dipanggil + setWidth/setHeight tidak di-set -> guard
+ * mContentView == null di PopupWindow membuat showAsDropDown()/
+ * showAtLocation() no-op SENYAP (tanpa crash), sementara sentuhan
+ * spinner sudah dikonsumsi listener -> tidak ada dropdown sama
+ * sekali. Content view + ukuran window kini dipasang eksplisit.
+ *
  * State tetap milik Spinner + adapter-nya (minimal-invasif): popup hanya
  * lapisan presentasi; nilai terpilih tetap dibaca dari Spinner. Tap
  * spinner lagi saat terbuka = toggle tutup. animScale 0 -> popup polos
@@ -84,8 +91,9 @@ final class GlitchDropdown {
         lv.setBackgroundResource(R.drawable.bg_dropdown);
         lv.setVerticalScrollBarEnabled(false);
         lv.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        if (!fx) lv.setSelector(new android.graphics.drawable.ColorDrawable(
-                Color.TRANSPARENT));
+        // Selector default (highlight item yang ditekan) DIPERTAHANKAN juga
+        // saat efek mati - itu feedback fungsional pilihan item, bukan
+        // dekorasi glitch (aksesibilitas: state tetap terbaca jelas).
 
         final PopupWindow pw = new PopupWindow(sp.getContext());
         pw.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -133,6 +141,17 @@ final class GlitchDropdown {
         int screenH = sp.getResources().getDisplayMetrics().heightPixels;
         int spaceBelow = screenH - (loc[1] + sp.getHeight());
         if (h <= 0) h = ViewGroup.LayoutParams.WRAP_CONTENT;
+
+        // FIX cy8.1 - INTI perbaikan "semua dropdown tidak muncul":
+        // PopupWindow HARUS diberi content view SEBELUM show*(); tanpa
+        // itu showAsDropDown()/showAtLocation() no-op senyap (guard
+        // mContentView == null di AOSP). Ukuran window juga eksplisit:
+        // lebar >= lebar spinner, tinggi hasil pengukuran ter-cap 280dp
+        // (WRAP_CONTENT bila pengukuran belum tersedia) - tanpa ini
+        // popup WRAP_CONTENT bisa mengabaikan cap 280dp.
+        pw.setContentView(lv);
+        pw.setWidth(w);
+        pw.setHeight(h);
         if (spaceBelow >= h + (int) (8 * d)) {
             pw.showAsDropDown(sp, 0, (int) (2 * d));
         } else {
