@@ -259,6 +259,14 @@ indikator tetap SATU view translationX/Y)**:
 
 **Commit**: cy10.9.
 
+> **cy10.12 — CATATAN LANJUTAN**: tiga akar di atas menutup masalah
+> VERTIKAL, tapi gejala lanjut "kemiringan berpindah ke kanan"
+> ternyata akar ke-EMPAT yang berbeda dan baru ketemu lewat pengukuran
+> Robolectric: `indicatorTargetX` menghitung posisi ABSOLUT (termasuk
+> paddingLeft bar) tapi dipakai sbg TRANSLATION di atas posisi layout
+> indikator yang SUDAH berada di paddingLeft -> kapsul +6dp ke kanan
+> dari itemnya sejak cy10.4. Lihat §12.
+
 ### 10. Mode IP per aplikasi: audit cy10.10 + 4 perbaikan
 ###    (fail-closed, embedded-v4, UDP/DNS mode paksa, UI nonaktif)
 
@@ -413,6 +421,69 @@ lama. → G12 (dengan usulan perbaikan, BELUM diterapkan sesuai
 permintaan).
 
 **Commit**: cy10.11.
+
+### 12. Navbar pill melayang: audit total keterpusatan (cy10.12,
+###     branch fix/pill-center)
+
+**Gejala user**: "pill tidak pernah center; setiap perbaikan hanya
+memindahkan kemiringannya (dulu ke bawah, sekarang ke kanan)".
+
+**Metode (Buktikan, jangan menebak)**: pengukuran layout NYATA via
+Robolectric 4.16.1 (`@GraphicsMode(NATIVE)` — metric font Roboto asli),
+inflasi `R.layout.activity_main` UTUH (rantai parent FrameLayout +
+gravity/margin XML asli ikut terukur), 7 density (1.0–3.5) × semua
+tab. Tes permanen: `PillCenterTest` (JVM; instrumented on-device belum
+dijalankan — butuh emulator/perangkat).
+
+**Temuan terukur (pra-perbaikan)**:
+1. **Capsule pill vs window: SUDAH terpusat ±1px** di semua density
+   (gravity center_horizontal + margin simetris bekerja) — kabar baik.
+2. **AKAR SEBENARNYA "ke kanan" (pra-ada sejak cy10.4!)**:
+   `indicatorTargetX` (rumus cy10.9) mengembalikan posisi X ABSOLUT
+   dlm koordinat bar — `row.getLeft() + item.left + (itemW−indW)/2`,
+   dengan row.getLeft() == paddingLeft bar (6dp) — tapi nilai itu
+   dipakai sbg TRANSLATIONX yang ditambahkan DI ATAS posisi layout
+   indikator, dan indikator (child FrameLayout default-gravity) sudah
+   beristirahat di paddingLeft. **Kapsul indikator jadi tergeser
+   permanen +6dp ke kanan dari item yang dibingkainya** (16px @420dpi;
+   +rowPadL/2 ekstra dari hack cy10.7 → gejala "berpindah" tiap kali
+   angka kompensasi diubah). Jangkar VERTIKAL cy10.9 kebetulan benar
+   karena mengurangkan `indicator.getTop()` — horizontal lupa
+   mengurangkan `indicator.getLeft()`. Fix cy10.12:
+   `target = pusatX(item) − indW/2 − indicator.getLeft()` — terukur
+   pasca-fix: indikator flush persis dgn bounds item, deviasi 0px
+   (±0.5px pembulatan).
+3. **Hack kompensasi cy10.7 DIHAPUS** (row.setPadding extraLeft/
+   extraRight): melanggar aturan audit B ("jangan padding pengimbang"),
+   menggeser blok tab ke kanan extraLeft/2 px (terukur 1..7px), salah
+   arah di RTL (label tepi bercermin, padding tidak), melebarkan pill
+   tanpa isi. AKAR asimetri inset tepi = item seragam selebar label
+   terlebar + konten per-item terpusat. Fix akar: **lebar item = isi
+   item itu sendiri + 2×padSide (min 48dp utk sentuh)** — inset tepi
+   konten kiri == kanan = padSide PERSIS (terukur asym 0px di 7
+   density), blok tab terpusat di capsule, tanpa kompensasi apa pun.
+4. **Indikator kini selebar item terpilih (cap 64dp M3)** — item sempit
+   (48dp) tidak lagi tertimpa kapsul 64dp; lebar dibaca dari
+   LayoutParams (bukan getWidth() basi) supaya target geser selalu
+   dihitung dgn geometri final; jangkar vertikal ikon (cy10.9) tetap
+   0px terukur.
+5. **Margin bawah = inset navigation bar + 4dp** (MainActivity:2832,
+   listener insets) — sudah sesuai aturan B3; XML 12dp hanya fallback
+   pra-inset. Tidak diubah.
+6. **Container pill hampir opaque**: `bg_nav_pill.xml` kini
+   `?attr/colorSurfaceContainer` (token tema M3, ter-link) + alpha
+   0xF5 (96%) pada instance drawable di konstruktor CyberNavBar —
+   teks konten di belakang pill tidak lagi menembus label. Area DI
+   LUAR pill tetap transparan penuh (background hanya di view pill +
+   clipToOutline). Token `nav_pill_container` lama tetap dipakai HUD.
+
+**Angka kunci (Robolectric, 7 density × 4 tab, pasca-fix)**:
+marginL==marginR (±1px integer-division, max deviasi 1px), centerOff
+pill-window 0..−1px, rowPadL==rowPadR==0, inset tepi konten asym=0px,
+indikator center == item center (±1px), indW ≤ itemW, jangkar vertikal
+0px, semua item ≥48dp.
+
+**Commit**: cy10.12 (branch fix/pill-center, dari hasil cy10.11).
 
 ## B. Item menunggu konfirmasi user (K1–K7, dari audit cy10.2)
 
@@ -607,3 +678,21 @@ dijalankan sandbox dan wajib dicek di perangkat fisik:
 4. **Refactor delegasi IpModeVerdict tidak mengubah perilaku**: blok
    2-11 di C.6 tetap lulus tanpa perubahan (fungsi identik, hanya
    pindah rumah).
+
+### C.8. Checklist device cy10.12 (pill center — hanya bisa di perangkat)
+
+Tes JVM (PillCenterTest) menguji layout code nyata, tapi yang TIDAK
+bisa direproduksi sandbox dan wajib dicek perangkat fisik:
+1. **Gesture vs 3-button navigation**: margin bawah pill = inset nav +
+   4dp (listener MainActivity) — periksa pill tidak menabrak gesture
+   bar dan cukup jauh dari tombol 3-button.
+2. **Font device (One UI/Roboto定制)**: lebar label beda font → lebar
+   item beda — pastikan inset tepi konten tetap simetris secara visual
+   dan indikator tetap flush dengan item terpilih.
+3. **fontScale besar (1.3)**: item melebar mengikuti label — pastikan
+   pill tetap center di window dan label tidak terpotong.
+4. **RTL (jika diuji)**: blok tab harus bercermin sempurna (item
+   kiri-kanan tertukar, indikator tetap flush item terpilih).
+5. **Render piksel aktual**: capsule clipToOutline + alpha 96% —
+   pastikan tidak ada tepi kotak/artifact dan teks di belakang pill
+   tidak lagi menembus label.

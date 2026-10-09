@@ -4,6 +4,42 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.12] — 2026-10-09 (branch fix/pill-center)
+
+### Fixed (navbar pill — audit total keterpusatan)
+- **AKAR "pill ke kanan" ditemukan & ditutup (pra-ada sejak cy10.4)**:
+  `indicatorTargetX` menghitung posisi X ABSOLUT (termasuk paddingLeft
+  bar) tapi dipakai sebagai TRANSLATIONX di atas posisi layout indikator
+  yang sudah beristirahat di paddingLeft → kapsul indikator tergeser
+  permanen +6dp ke kanan dari item yang dibingkainya (16px @420dpi).
+  Fix: `target = pusatX(item) − indW/2 − indicator.getLeft()` — kini
+  terukur flush persis dengan bounds item (deviasi 0px ± pembulatan).
+- **Hack kompensasi cy10.7 DIHAPUS** (row.setPadding extraLeft/
+  extraRight — dilarang aturan audit B): menggeser blok tab ke kanan
+  extraLeft/2 px (terukur 1..7px), salah arah di RTL, melebarkan pill
+  tanpa isi. Fix akar asimetri inset tepi: **lebar item = isi item itu
+  sendiri + 2×padSide, min 48dp** → inset tepi konten kiri == kanan
+  PERSIS (asym 0px terukur di 7 density), blok tab terpusat di capsule.
+- **Indikator selebar item terpilih (cap 64dp M3)** — kapsul tidak lagi
+  menjorok menimpa item sempit (48dp); lebar dibaca dari LayoutParams
+  supaya target geser dihitung dengan geometri final (bukan getWidth()
+  basi pra-layout).
+- **Container pill hampir opaque**: bg_nav_pill kini
+  `?attr/colorSurfaceContainer` (token tema M3) + alpha 96% — teks
+  konten di belakang pill tidak lagi menembus label; area di luar pill
+  tetap transparan penuh.
+
+### Added (tes)
+- **PillCenterTest (Robolectric, native graphics — font metric Roboto
+  asli)**: inflasi R.layout.activity_main utuh, 7 density × semua tab ×
+  portrait/landscape; GAGAL bila pill tidak center. Invarian: margin
+  kiri==kanan (±1px), pusat pill==pusat window (±1px), row tanpa
+  padding pengimbang (regresi hack), inset tepi konten simetris (±1px),
+  indikator terpusat di item (±1px) & tidak melebihi lebar item, jangkar
+  vertikal = pusat ikon (±1px), item ≥48dp, token colorSurfaceContainer
+  resolvable + alpha container 0xF5. Tes instrumented on-device BELUM
+  dijalankan (butuh emulator/perangkat — lihat checklist C.8).
+
 ## [cy10.11] — 2026-10-09
 
 ### Added (tes)

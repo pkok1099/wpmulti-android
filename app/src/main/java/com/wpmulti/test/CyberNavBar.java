@@ -52,7 +52,8 @@ import java.util.ArrayList;
  *    kotak. elevation SELALU 0 (tidak ada jalur layer/shadow framework).
  *  - Indikator aktif = SATU view terpisah (bg_nav_indicator.xml capsule
  *    64x32dp) yang bergeser (translationX) ke item terpilih — di belakang
- *    ikon, bukan bagian dari item.
+ *    ikon, bukan bagian dari item. cy10.11-B: lebar indikator mengikuti
+ *    lebar item terpilih (cap 64dp M3) — item kini selebar isi masing2.
  *  - Efek glitch HANYA pada item yang kehilangan/mendapat active state
  *    (item lama MINOR, item baru MEDIUM) via API GlitchText yang beku —
  *    span label + translationX murni; TANPA hardware layer, TANPA snapshot
@@ -81,17 +82,19 @@ public class CyberNavBar extends FrameLayout {
     private static final int IND_H_DP = 32;
     private static final long IND_ANIM_MS = 240;    // gerakan indikator
 
-    /** Satu item navbar: id + view item + kolom ikon+label + ikon + label. */
+    /** Satu item navbar: id + view item + kolom ikon+label + ikon + label
+     * + lebar ISI item (cy10.11-B — item tidak lagi seragam). */
     private static final class Item {
         final int id;
         final FrameLayout view;
         final LinearLayout col;   // cy10.9: jangkar posisi ikon (lihat onLayout)
         final ImageView icon;     // cy10.9: pusat vertikal indikator = pusat ikon
         final TextView label;
+        final int w;              // cy10.11-B: lebar item terukur (isi + pad)
         Item(int id, FrameLayout view, LinearLayout col, ImageView icon,
-                TextView label) {
+                TextView label, int w) {
             this.id = id; this.view = view; this.col = col; this.icon = icon;
-            this.label = label;
+            this.label = label; this.w = w;
         }
     }
 
@@ -113,6 +116,15 @@ public class CyberNavBar extends FrameLayout {
         // Clip konten mengikuti outline background (capsule bg_nav_pill.xml)
         // — SATU sumber bentuk; tidak ada kotak di level mana pun.
         setClipToOutline(true);
+        // cy10.11-B: container HAMPIR OPAQUE (96%): teks konten halaman yang
+        // lewat di belakang pill tidak lagi menembus/mengganggu label.
+        // Warna tetap dari token tema (?attr/colorSurfaceContainer di
+        // bg_nav_pill.xml — M3 surface container); alpha hanya pada
+        // INSTANCE drawable ini (mutate). Area DI LUAR pill tetap
+        // transparan penuh: background hanya pada view pill + clipToOutline
+        // capsule — tidak ada view/latar lain di area navbar.
+        android.graphics.drawable.Drawable bg = getBackground();
+        if (bg != null) bg.mutate().setAlpha(0xF5);
 
         row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -171,25 +183,32 @@ public class CyberNavBar extends FrameLayout {
             // menu rusak = navbar kosong (fail-safe, tidak crash)
         }
 
-        // Ukuran item: tinggi dari font + padding (label tidak terpotong);
-        // lebar seragam mengikuti label terlebar + padding (pill mengikuti
-        // ISI, konstan di semua ukuran layar — bukan 0.175x lebar layar).
-        // cy10.5 (akar crash startup NPE — docs/KNOWN_ISSUES.md §7):
-        // TextView.setText() -> checkForRelayout() membaca mLayoutParams
-        // .width SEBAGAI PERNYATAAN PERTAMA (AOSP 14..16 TANPA null-guard;
-        // android-14.0.0_r1:11246, main:11679) dan hanya terpanggil saat
-        // mLayout != null. Probe lama (satu objek dipakai ulang) diukur di
-        // iterasi 1 -> mLayout terbentuk -> setText iterasi 2 (menu punya
-        // 4 judul) -> checkForRelayout -> probe TANPA parent/tanpa
-        // setLayoutParams = mLayoutParams NULL -> NPE pasti di cold start.
-        // Fix BY CONSTRUCTION, dua lapis: (1) probe BARU per judul — setText
-        // selalu terjadi saat view masih segar (mLayout null, jalur
-        // checkForRelayout tak tersentuh); (2) LP eksplisit sebelum apapun
-        // — mLayoutParams tidak pernah null di jalur manapun. Hasil ukur
-        // identik (measure(UNSPECIFIED) membaca spec, bukan LP).
-        int labelH = 0, labelW = 0;
-        // cy10.7: lebar TERUKUR per judul (bukan hanya maksimum) - dipakai
-        // utk menyamakan inset kiri-kanan konten pill (lihat di bawah).
+        // Ukuran item: tinggi dari font + padding (label tidak terpotong).
+        // cy10.11-B (AKAR, mengganti dua lapis perilaku lama):
+        // (1) lebar item = ISI NYA (label/ikon item itu + padding), min
+        //     48dp utk area sentuh — BUKAN lagi seragam selebar label
+        //     terlebar. Konsekuensi baik: inset konten tepi kiri/kanan
+        //     terhadap pill = padSide PERSIS simetris tanpa kompensasi
+        //     apa pun, dan blok item tepat terpusat di capsule.
+        // (2) HACK kompensasi cy10.7 (row.setPadding(extraLeft/
+        //     extraRight) utk "menyeimbangkan" inset tepi pada item
+        //     seragam) DIHAPUS: ia menggeser blok tab ke kanan
+        //     (extraLeft/2 px — terukur Robolectric cy10.11: 1..7px
+        //     bergantung density/font), salah arah di RTL (label tepi
+        //     bercermin, padding tidak), dan melebarkan pill tanpa isi.
+        //     Item seragam + konten per-item terpusat adalah akar asimetri;
+        //     menyembuhkannya dgn padding pengimbang = "mengubah angka,
+        //     bukan akar masalah".
+        // Pill tetap mengikuti ISI (kontrak cy10.4) — kini = jumlah lebar
+        // isi tiap item; indikator menyesuaikan lebar item (cap 64dp).
+        //
+        // cy10.5 (akar crash startup NPE — docs/KNOWN_ISSUES.md §7) tetap
+        // berlaku: probe BARU per judul + LP eksplisit sebelum setText
+        // (mLayout null -> checkForRelayout tak tersentuh; mLayoutParams
+        // tidak pernah null). Hasil ukur identik.
+        int labelH = 0;
+        // cy10.7: lebar TERUKUR per judul - kini dipakai utk lebar item
+        // per-item (bukan lagi utk kompensasi inset).
         int[] titleW = new int[titles.size()];
         for (int i = 0; i < titles.size(); i++) {
             TextView probe = buildLabel(getContext());
@@ -199,7 +218,6 @@ public class CyberNavBar extends FrameLayout {
             probe.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED);
             labelH = Math.max(labelH, probe.getMeasuredHeight());
             titleW[i] = probe.getMeasuredWidth();
-            labelW = Math.max(labelW, titleW[i]);
         }
         float dp = getResources().getDisplayMetrics().density;
         int iconPx = (int) (ICON_DP * dp);
@@ -209,37 +227,17 @@ public class CyberNavBar extends FrameLayout {
         itemH = Math.max(itemH, (int) (ITEM_MIN * dp));
         // cy10.9 (fix sisa "agak miring" - bias 1px): kolom ikon+label
         // dipusatkan di item lewat Gravity.CENTER FrameLayout yang membagi
-        // slack dgn INTEGER DIVISION; slack GANJIL (mis. density 2.5/1.5:
-        // (int)37dp - ikon - gap = 35px) menaruh blok 1px lebih TINGGI dari
-        // pusat -> jarak ikon-tepi-atas-pill != jarak label-tepi-bawah-pill.
-        // +1px pada itemH (tak terlihat) menjamin slack GENAP = terpusat
-        // persis di semua density/fontScale.
+        // slack dgn INTEGER DIVISION; slack GANJIL menaruh blok 1px lebih
+        // TINGGI dari pusat. +1px pada itemH (tak terlihat) menjamin slack
+        // GENAP = terpusat persis di semua density/fontScale.
         int colH = iconPx + gapPx + labelH;
         if ((itemH - colH) % 2 != 0) itemH++;
         int padSidePx = (int) (ITEM_PAD_SIDE_DP * dp);
-        int contentW = Math.max(iconPx, labelW) + 2 * padSidePx;
-        int itemW = Math.max(contentW, (int) (ITEM_MIN * dp));
-
-        // cy10.7 (fix asimetri pill luar): semua item selebar itemW (label
-        // terlebar), tapi isi tiap item selebar labelNYA sendiri dan
-        // dipusatkan -> inset konten terhadap tepi pill bergantung lebar
-        // label ITEM TERAKHIR/TERTAMA. "Beranda" (glyph proporsional lebih
-        // lebar) vs "Setelan" membuat sisi kiri tampak lebih rapat.
-        // Solusi dari UKURAN NYATA: lebar isi item tepi w0/wN =
-        // max(ikon, label tepi itu) + 2*padSide; slack tepi = (itemW-w)/2.
-        // Tambahkan padding row di sisi yang longgar sebesar selisih
-        // slack kedua tepi -> inset kiri = inset kanan, item tetap
-        // seragam, indikator & sentuhan tidak berubah.
-        int extraLeft = 0, extraRight = 0;
-        if (titles.size() >= 2) {
-            int w0 = Math.max(iconPx, titleW[0]) + 2 * padSidePx;
-            int wN = Math.max(iconPx, titleW[titles.size() - 1])
-                    + 2 * padSidePx;
-            if (w0 > wN) extraLeft = (w0 - wN + 1) / 2;
-            else if (wN > w0) extraRight = (wN - w0 + 1) / 2;
-            row.setPadding(extraLeft, 0, extraRight, 0);
-        } else {
-            row.setPadding(0, 0, 0, 0);
+        int minItemPx = (int) (ITEM_MIN * dp);
+        int[] itemW = new int[titles.size()];
+        for (int i = 0; i < titles.size(); i++) {
+            itemW[i] = Math.max(Math.max(iconPx, titleW[i]) + 2 * padSidePx,
+                    minItemPx);
         }
 
         ColorStateList iconTint = getContext().getColorStateList(
@@ -252,7 +250,9 @@ public class CyberNavBar extends FrameLayout {
             int iconRes = defs.get(i)[1];
 
             FrameLayout item = new FrameLayout(getContext());
-            item.setLayoutParams(new LinearLayout.LayoutParams(itemW, itemH));
+            // cy10.11-B: lebar per-item (isi + pad, min 48dp). Tinggi tetap
+            // seragam — semua item satu baris ikon+label, baseline sejajar.
+            item.setLayoutParams(new LinearLayout.LayoutParams(itemW[i], itemH));
 
             LinearLayout col = new LinearLayout(getContext());
             col.setOrientation(LinearLayout.VERTICAL);
@@ -298,8 +298,13 @@ public class CyberNavBar extends FrameLayout {
             item.setFocusable(true);
 
             row.addView(item);
-            items.add(new Item(id, item, col, icon, label));
+            items.add(new Item(id, item, col, icon, label, itemW[i]));
         }
+
+        // cy10.11-B: lebar indikator = lebar item TERPILIH (cap 64dp M3) —
+        // item kini bisa lebih sempit dari 64dp; tanpa ini indikator
+        // menjorok melewati bounds item sempit (menimpa ikon tetangga).
+        applyIndicatorWidth(findItem(selectedId));
 
         // Daftarkan label ke registry glitch SEKALI di sini (tidak ada
         // inflasi lazy seperti BNV — semua view sudah final).
@@ -325,6 +330,9 @@ public class CyberNavBar extends FrameLayout {
     public void selectInitial(int id) {
         selectedId = id;
         for (Item it : items) it.view.setSelected(it.id == id);
+        // cy10.11-B: lebar indikator ikut item terpilih SEBELUM layout
+        // (state dipasang seketika, sebelum fx apa pun).
+        applyIndicatorWidth(findItem(id));
         requestLayout();
     }
 
@@ -341,6 +349,11 @@ public class CyberNavBar extends FrameLayout {
         Item neu = findItem(id);
         selectedId = id;
         for (Item it : items) it.view.setSelected(it.id == id);
+        // cy10.11-B: lebar indikator ikut item baru SEBELUM gerakan —
+        // indicatorTargetX membaca lebar dari LayoutParams (lebar yang
+        // AKAN diterapkan, bukan getWidth() basi pra-layout), jadi target
+        // geser selalu dihitung dgn geometri final.
+        applyIndicatorWidth(neu);
         if (old != null) {
             GlitchText.glitchTree(old.view, GlitchText.MINOR);
             GlitchText.glitchJitter(old.view, GlitchText.MINOR);
@@ -364,15 +377,51 @@ public class CyberNavBar extends FrameLayout {
 
     // ---------------- indikator ----------------
 
-    /** X target indikator (koordinat CyberNavBar) utk item terpilih.
-     * cy10.9: Math.round -> tepi kiri/kanan capsule jatuh di piksel penuh
-     * (posisi sub-piksel membuat KEDUA tepi AA-soft; deviasi <= 0.5px
-     * dari pusat tak terlihat, tepi kabur TERLIHAT). */
+    /** X target indikator (TRANSLATION, koordinat relatif posisi layout
+     * indikator sendiri) utk item terpilih.
+     *
+     * <p>cy10.12 (AKAR "indikator/pill tampak ke kanan", pra-ada sejak
+     * cy10.9): rumus lama mengembalikan row.getLeft() + item.left + ...,
+     * yaitu posisi X ABSOLUT dalam koordinat bar — padahal nilai ini
+     * dipakai sebagai TRANSLATION yang ditambahkan DI ATAS posisi layout
+     * indikator. Indikator (child FrameLayout tanpa gravity) beristirahat
+     * di paddingLeft bar (6dp), jadi kapsul tergeser permanen +6dp ke
+     * KANAN dari item yang dibingkainya (+ rowPadL/2 ekstra saat hack
+     * kompensasi cy10.7 masih ada — perbaikan-perbaikan lama hanya
+     * menggeser besarnya, persis gejala "kemiringan berpindah").
+     * Jangkar vertikal cy10.9 sudah benar karena mengurangkan
+     * indicator.getTop(); horizontal lupa mengurangkan posisi layout
+     * sendiri. Fix: target = pusatX(item) − indW/2 − indicator.getLeft().
+     *
+     * <p>cy10.9: Math.round tetap -> tepi kiri/kanan capsule jatuh di
+     * piksel penuh (posisi sub-piksel membuat KEDUA tepi AA-soft;
+     * deviasi &lt;= 0.5px dari pusat tak terlihat, tepi kabur TERLIHAT).
+     * cy10.11-B: lebar indikator dibaca dari LayoutParams — lebar yang
+     * diterapkan/akan diterapkan (lebar indikator kini mengikuti item
+     * terpilih; getWidth() bisa basi sebelum layout selesai). */
     private float indicatorTargetX() {
         Item it = findItem(selectedId);
-        if (it == null) return row.getLeft();
-        return Math.round(row.getLeft() + it.view.getLeft()
-                + (it.view.getWidth() - indicator.getWidth()) / 2f);
+        if (it == null) return 0;
+        int indW = indicator.getLayoutParams().width;
+        float itemCenterX = row.getLeft() + it.view.getLeft()
+                + it.view.getWidth() / 2f;
+        return Math.round(itemCenterX - indW / 2f - indicator.getLeft());
+    }
+
+    /** cy10.11-B: samakan lebar indikator dgn lebar item terpilih
+     * (cap 64dp M3 — indikator tidak pernah lebih lebar dari itemnya,
+     * tidak menjorok ke item tetangga). requestLayout hanya bila lebar
+     * benar-benar berubah. Item null (menu kosong) = no-op. */
+    private void applyIndicatorWidth(Item it) {
+        if (it == null) return;
+        float dp = getResources().getDisplayMetrics().density;
+        int w = Math.min((int) (IND_W_DP * dp), it.w);
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) indicator.getLayoutParams();
+        if (lp.width != w) {
+            lp.width = w;
+            indicator.requestLayout();
+        }
     }
 
     private void moveIndicator(boolean animate) {

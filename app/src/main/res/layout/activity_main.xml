@@ -930,11 +930,14 @@
          elevation selalu 0; indikator aktif = SATU view terpisah yang
          bergeser (translationX); glitch hanya per-item yang berubah
          (API GlitchText beku, tanpa layer/bitmap/alpha container).
-         COMPACT: lebar item = label terlebar + padding 14dp (seragam,
-         pill mengikuti ISI ~250dp, bukan layar); tinggi item dari
-         icon+gap+font+padding (~52dp, label tidak terpotong); area
-         sentuh tiap item >= 48dp; pill ~62dp (dari 64dp). Konten
-         halaman tetap lewat DI BELAKANG pill (translucent 90%). -->
+         COMPACT cy10.11-B: lebar item = ISI item itu sendiri + padding
+         20dp (min 48dp; bukan lagi seragam label-terlebar - inset tepi
+         kiri/kanan konten = padSide PERSIS simetris, blok tab terpusat
+         di capsule, tanpa padding pengimbang), pill mengikuti ISI;
+         tinggi item dari icon+gap+font+padding (~52dp, label tidak
+         terpotong); indikator selebar item terpilih (cap 64dp M3).
+         Konten halaman tetap lewat DI BELAKANG pill - container kini
+         HAMPIR OPAQUE (?attr/colorSurfaceContainer 96%, cy10.11-B). -->
     <com.wpmulti.test.CyberNavBar
         android:id="@+id/navPill"
         android:layout_width="wrap_content"

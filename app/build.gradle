@@ -65,6 +65,13 @@ android {
             useLegacyPackaging = true
         }
     }
+    testOptions {
+        unitTests {
+            // cy10.11-B: WAJIB utk Robolectric - akses resource asli
+            // (R.layout/R.menu/R.style/themes) dari tes JVM.
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -78,5 +85,8 @@ dependencies {
     // cy10.11: tes unit lokal (JUnit 4, JVM murni) utk logika verdict
     // IpModeVerdict - menggantikan mirror Python cy10.10; tes kini
     // menguji kode yang benar-benar dipakai data plane VpnEngine.
+    // cy10.11-B: Robolectric utk pengukuran layout pill NAVBAR nyata
+    // (View/FrameLayout layout asli di JVM - B2/B3/B4 audit pill center).
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
 }
