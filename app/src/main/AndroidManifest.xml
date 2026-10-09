@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- C1: foreground service penjaga proxy. POST_NOTIFICATIONS
          dideklarasikan tapi tidak diminta saat runtime: notifikasi FGS
@@ -11,8 +12,13 @@
     <!-- Daftar aplikasi lengkap (user + sistem) di Android 11+.
          Aplikasi ini di-sideload langsung, bukan via Play Store.
          Izin install-time (otomatis utk sideload), bukan runtime.
-         (Duplikat deklarasi dihapus - hanya satu yang dibutuhkan.) -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+         (Duplikat deklarasi dihapus - hanya satu yang dibutuhkan.)
+         Dibutuhkan nyata: getInstalledApplications(0) di MainActivity
+         untuk daftar per-app IP mode (user+sistem) - queryIntentActivities
+         MAIN/LAUNCHER saja tidak mengembalikan app non-launchable.
+         tools:ignore: kebutuhan terdokumentasi, distribusi non-Play. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Package visibility (Android 11+): tanpa ini queryIntentActivities
          hanya mengembalikan segelintir aplikasi. Dengan intent MAIN/LAUNCHER
          ini, daftar aplikasi launcher tampil lengkap (300+). -->

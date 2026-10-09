@@ -112,7 +112,12 @@
                             app:indicatorColor="?attr/colorOnPrimaryContainer"
                             app:indicatorSize="24dp" />
 
-                        <Button android:id="@+id/btnEngine"
+                        <!-- Kelas eksplisit MaterialButton: Java me-cast
+                             findViewById ke MaterialButton (morphEngineButton).
+                             Tag <Button> lama hanya kebetulan di-inflate
+                             MaterialButton oleh tema M3 (MaterialComponentsViewInflater)
+                             - WrongViewCast lint. -->
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btnEngine"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"
                             android:layout_height="56dp"
@@ -178,7 +183,7 @@
                             android:textSize="13sp"
                             android:visibility="gone" />
 
-                        <Button android:id="@+id/vpnToggleBtn"
+                        <com.google.android.material.button.MaterialButton android:id="@+id/vpnToggleBtn"
                             style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"

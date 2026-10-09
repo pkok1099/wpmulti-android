@@ -4,6 +4,25 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.11] — 2026-10-09
+
+### Fixed (build)
+- **Build + lint pertama kali benar-benar dijalankan** (laporan cy10.10
+  tidak menyertakan build — sandbox sebelumnya tanpa Android SDK).
+  `assembleDebug` lolos sejak commit 1c92b6b (kode cy10.10 utuh, tidak
+  ada sisa typo); `lintDebug` menemukan 3 error, semuanya diperbaiki
+  dari akar:
+  - `WrongViewCast` di `MainActivity:290/:2940` — Java me-cast
+    `findViewById` ke `MaterialButton` sementara XML masih tag `<Button>`
+    (kebetulan di-inflate `MaterialButton` oleh tema M3). Fix: tag XML
+    `btnEngine`/`vpnToggleBtn` diganti kelas eksplisit
+    `com.google.android.material.button.MaterialButton` (identik saat
+    runtime, tipe jelas).
+  - `QueryAllPackagesPermission` di `AndroidManifest` — izin memang
+    dibutuhkan nyata (`getInstalledApplications(0)` untuk daftar app
+    user+sistem di mode IP per-app; distribusi sideload non-Play).
+    Fix: `tools:ignore` + justifikasi terdokumentasi di manifest.
+
 ## [cy10.10] — 2026-10-09
 
 ### Security / Changed
