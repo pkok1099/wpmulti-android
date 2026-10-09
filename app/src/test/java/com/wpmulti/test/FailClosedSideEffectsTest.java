@@ -15,11 +15,11 @@ import org.junit.Test;
  * <p>Tes ini mensimulasikan RANTAI KEPUTUSAN ENGINE secara harfiah
  * memakai fungsi yang SAMA yang dipakai VpnEngine (bukan salinan):
  * <pre>
- *   // VpnEngine.flowOwner (:302-318):
+ *   // VpnEngine.flowOwner (fungsi "flowOwner" di VpnEngine.java):
  *   own = (appIpModes kosong || exception lookup || uid &lt; 0
  *          || pkgs null/kosong) ? null
  *        : FlowOwner(uidVerdictMode(pkgs, appIpModes), ...)
- *   // VpnEngine.handleTcp/handleTcp6 (:1813/:1871):
+ *   // VpnEngine.handleTcp / handleTcp6 (verdictAction delegasi):
  *   act = verdictAction(own == null ? null : own.mode, effV6,
  *                       blockV4Active, blockV6Active, ipMode)
  * </pre>
@@ -28,15 +28,22 @@ import org.junit.Test;
  * <ul>
  * <li><b>Race lookup conntrack</b> — entri belum terlihat netd saat
  *     paket tiba (kegagalan TIDAK di-cache, di-retry per paket —
- *     VpnEngine.flowOwner komentar :284-288);</li>
+ *     komentar VpnEngine.flowOwner);</li>
  * <li><b>UID sistem tanpa paket</b> — getPackagesForUid kosong/null
- *     (mis. UID 0/1000/1023) -> flowOwner return null (:314);</li>
- * <li><b>Exception binder</b> -> null (:304-306).</li>
+ *     (mis. UID 0/1000/1023) -> flowOwner return null;</li>
+ * <li><b>Exception binder</b> -> null.</li>
  * </ul>
  * Catatan minSdk: aplikasi ini minSdk 34 (&gt;= API 29) sehingga
  * ConnectivityManager.getConnectionOwnerUid SELALU tersedia — jalur
  * "API terlalu tua" tidak ada di kode (tidak ada cabang Build.VERSION
  * di flowOwner; satu-satunya fallback adalah null di atas).
+ *
+ * <p><b>Limitasi terdokumentasi (review cy10.11, T1-4)</b>: tes ini
+ * menguji logika IpModeVerdict + replika rantai flowOwner→verdict di
+ * JVM. PERAKITAN argumen di call-site VpnEngine (mis. effV6 dari
+ * effFamilyV6, urutan blockV4Active/blockV6Active) TIDAK tercakup —
+ * diverifikasi manual review independen (setara hunk-per-hunk) +
+ * checklist device C.6/C.7.
  */
 public class FailClosedSideEffectsTest {
 

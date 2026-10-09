@@ -629,13 +629,20 @@ public class VpnEngine extends VpnService {
             if ("block4".equals(m)) nb4++;
             else if ("block6".equals(m)) nb6++;
         }
-        // Bagian sinkron (murah, tanpa binder): swap map + reset cache.
-        // Jalur paket melihat map lama ATAU baru yang utuh (volatile ref).
+        // Bagian sinkron (murah, tanpa binder): reset cache DULU, lalu
+        // swap map (cy10.11-review: urutan dibalik — paket di jendela
+        // antara clear dan swap melihat map LAMA + cache KOSONG → lookup
+        // segar konsisten dgn map lama; urutan lama swap→clear membiarkan
+        // map BARU + cache STALE (verdict lama) lolos sekejap. Empat
+        // volatile tetap tidak atomik — jendela sub-detik ditutup
+        // cutConflictingFlows (mode dihitung ulang dari pkgs ter-cache
+        // terhadap map baru), jadi ini pengerasan urutan, bukan klaim
+        // atomisitas).
+        ownerCache.clear();
         appIpModes = aim;
         anyBlockApp = nb4 + nb6 > 0;
         blockV4Active = nb4 > 0; // cy10.10: kunci fail-closed per family
         blockV6Active = nb6 > 0;
-        ownerCache.clear();
         // Family yang dibutuhkan mode BLOCK vs yang ditangkap TUN ini.
         boolean partial = (nb4 > 0 && !tunHasV4) || (nb6 > 0 && !tunHasV6);
         // Bagian lambat (connOwnerUid = binder call per flow) di background:
