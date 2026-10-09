@@ -119,6 +119,11 @@ public class PillCenterTest {
                     0, row.getPaddingLeft());
             assertEquals("row.paddingRight harus 0 (" + tag + ")",
                     0, row.getPaddingRight());
+            // cy10.12-review (T2-1): padding XML pill sendiri juga harus
+            // simetris — tanpa ini cek inset konten bisa saling meniadakan
+            // bila paddingStart/End dibuat asimetris (row mengikuti padding).
+            assertEquals("padding horizontal pill asimetris (" + tag + ")",
+                    pill.getPaddingLeft(), pill.getPaddingRight());
 
             for (int tab : TABS) {
                 pill.selectInitial(tab);
