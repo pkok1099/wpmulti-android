@@ -1089,6 +1089,12 @@ public class MainActivity extends AppCompatActivity {
                 .show();
         View dec = dlg.getWindow() != null
                 ? dlg.getWindow().getDecorView() : lv;
+        dlg.setOnDismissListener(d2 -> {
+            GlitchText.clearScanline(dec);
+            GlitchText.cancelFor(dec);
+            GlitchText.clearScanline(lv);
+            GlitchText.cancelFor(lv);
+        });
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
         // cy10: window animation ikut SATU fungsi pusat keputusan efek
@@ -1411,6 +1417,12 @@ public class MainActivity extends AppCompatActivity {
                 .show();
         View dec = dlg.getWindow() != null
                 ? dlg.getWindow().getDecorView() : lv;
+        dlg.setOnDismissListener(d2 -> {
+            GlitchText.clearScanline(dec);
+            GlitchText.cancelFor(dec);
+            GlitchText.clearScanline(lv);
+            GlitchText.cancelFor(lv);
+        });
         GlitchText.registerTree(dec);
         GlitchText.installTouch(dec);
         // cy10: guard window animation = isGlitchEnabled() (lihat catatan

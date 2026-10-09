@@ -87,7 +87,7 @@ final class GlitchDropdown {
 
     /** Hentikan loop pulse (onPause) - popup tetap terbuka, beku diam. */
     static void pausePulse() {
-        H.removeCallbacks(sPulse);
+        H.removeCallbacksAndMessages(null);
     }
 
     /** Lanjutkan pulse bila popup masih terbuka dan efek aktif (onResume). */
@@ -104,7 +104,7 @@ final class GlitchDropdown {
     /** Pulse berkala: satu item acak mikro-terkorupsi selama terbuka. */
     private static final Runnable sPulse = new Runnable() {
         @Override public void run() {
-            if (sOpen == null || sOpenList == null) return;
+            if (sOpen == null || sOpenList == null || !sOpen.isShowing()) return;
             GlitchText.dropdownPulse(sOpenList);
             // tiap pulse ke-4: shimmer scanline tipis sesaat - dropdown
             // "bernapas" tanpa guncangan konstan.

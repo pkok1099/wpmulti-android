@@ -539,8 +539,13 @@ public final class GlitchText {
      * dipulihkan stepFinish - view ber-elevation (HUD, kartu) tidak lagi
      * meninggalkan artifact kotak. Rantai berakhir PASTI di baseline.
      */
+    private static final float[] SEQ_MAJOR = {0.1f, 0.85f, 0.25f, 0.9f, 0.4f};
+    private static final float[] SEQ_MEDIUM = {0.2f, 0.8f, 0.35f};
+    private static final float[] SEQ_MINOR = {0.35f, 0.8f};
+
     public static void glitchView(View v, int level) {
         if (v == null || !isGlitchEnabled()) return;
+        cancelFor(v);
         markEvent();
         v.animate().cancel();
         guardElevation(v);
@@ -548,13 +553,13 @@ public final class GlitchText {
         float[] seq;
         switch (level) {
             case MAJOR:
-                seq = new float[]{0.1f, 0.85f, 0.25f, 0.9f, 0.4f};
+                seq = SEQ_MAJOR;
                 break;
             case MEDIUM:
-                seq = new float[]{0.2f, 0.8f, 0.35f};
+                seq = SEQ_MEDIUM;
                 break;
             default:
-                seq = new float[]{0.35f, 0.8f};
+                seq = SEQ_MINOR;
         }
         for (float a : seq) {
             t += 38 + RND.nextInt(22);
@@ -563,7 +568,7 @@ public final class GlitchText {
         }
         t += 45;
         stepFinish(v, t);
-        glitchJitter(v, level);
+        glitchJitterInternal(v, level, false);
     }
 
     /**
@@ -573,7 +578,12 @@ public final class GlitchText {
      * baseline (tidak ada layout shift, tidak ada state nyangkut).
      */
     public static void glitchJitter(View v, int level) {
+        glitchJitterInternal(v, level, true);
+    }
+
+    private static void glitchJitterInternal(View v, int level, boolean cancelPrevious) {
         if (v == null || !isGlitchEnabled()) return;
+        if (cancelPrevious) cancelFor(v);
         markEvent();
         float d = DENSITY;
         float amp = level == MAJOR ? 3.5f : level == MEDIUM ? 2f : 1f;
@@ -602,6 +612,7 @@ public final class GlitchText {
      */
     public static void glitchAppear(View v) {
         if (v == null || !isGlitchEnabled()) return;
+        cancelFor(v);
         markEvent();
         glitchTree(v, MEDIUM);
         v.animate().cancel();
@@ -613,7 +624,7 @@ public final class GlitchText {
         step(v, 130, () -> v.setAlpha(0.75f));
         step(v, 170, () -> v.setAlpha(0.3f));
         stepFinish(v, 215);
-        glitchJitter(v, MEDIUM);
+        glitchJitterInternal(v, MEDIUM, false);
     }
 
     /**
@@ -623,6 +634,7 @@ public final class GlitchText {
      */
     public static void glitchDisappear(View v) {
         if (v == null || !isGlitchEnabled()) return;
+        cancelFor(v);
         markEvent();
         glitchTree(v, MINOR);
         v.animate().cancel();
@@ -631,7 +643,7 @@ public final class GlitchText {
         step(v, 35,  () -> v.setAlpha(0.8f));
         step(v, 70,  () -> v.setAlpha(0.1f));
         step(v, 105, () -> v.setAlpha(0f));
-        glitchJitter(v, MINOR);
+        glitchJitterInternal(v, MINOR, false);
     }
 
     /**
@@ -664,6 +676,7 @@ public final class GlitchText {
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
             final int d = i * 16;
+            cancelFor(c);
             guardElevation(c);
             step(c, d,      () -> c.setAlpha(0.15f));
             step(c, d + 26, () -> c.setAlpha(0.7f));
@@ -686,6 +699,7 @@ public final class GlitchText {
         for (int i = 0; i < g.getChildCount(); i++) {
             final View c = g.getChildAt(i);
             final int d = i * 12;
+            cancelFor(c);
             guardElevation(c);
             step(c, d,      () -> c.setAlpha(0.5f));
             step(c, d + 24, () -> c.setAlpha(0.9f));
@@ -700,7 +714,7 @@ public final class GlitchText {
      * Mengembalikan true bila ada anak yang dikenai efek.
      */
     public static boolean dropdownPulse(ViewGroup g) {
-        if (g == null || !isGlitchEnabled()) return false;
+        if (g == null || !isGlitchEnabled() || !g.isShown()) return false;
         ArrayList<View> vis = new ArrayList<>();
         for (int i = 0; i < g.getChildCount(); i++) {
             View c = g.getChildAt(i);
@@ -1103,6 +1117,9 @@ public final class GlitchText {
         H.postDelayed(RESTORE, delay);
     }
 
+    private static final ArrayList<Node> S_ALIVE = new ArrayList<>();
+    private static final ArrayList<Node> S_ALIVE_HOT = new ArrayList<>();
+
     private static final Runnable TICK = new Runnable() {
         @Override public void run() {
             tickQueued = false;
@@ -1112,18 +1129,20 @@ public final class GlitchText {
             // bintangnya, ambient hanya atmosfer (1 target / 950-1500ms).
             long now = SystemClock.uptimeMillis();
             if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && isGlitchEnabled()) {
-                ArrayList<Node> alive = new ArrayList<>();
-                ArrayList<Node> aliveHot = new ArrayList<>();
+                S_ALIVE.clear();
+                S_ALIVE_HOT.clear();
                 for (Node n : NODES) {
                     TextView tv = n.ref.get();
                     if (tv == null || n.input) continue;
-                    alive.add(n);
-                    if (n.hot) aliveHot.add(n);
+                    S_ALIVE.add(n);
+                    if (n.hot) S_ALIVE_HOT.add(n);
                 }
-                if (!alive.isEmpty()) {
-                    Node n = pick(alive, aliveHot);
+                if (!S_ALIVE.isEmpty()) {
+                    Node n = pick(S_ALIVE, S_ALIVE_HOT);
                     if (n != null) burst(n, MINOR);
                 }
+                S_ALIVE.clear();
+                S_ALIVE_HOT.clear();
             }
             // cy10.2 CATATAN: cadence tick, ukuran pool ambient, dan
             // restore tak-bersyarat ini SENGAJA dipertahankan persis -
@@ -1168,6 +1187,15 @@ public final class GlitchText {
      * yang di-span; sisanya tidak disentuh. rs < 0 = range acak (ambien).
      * Deletion (region kosong) -> "seam" di sekitar posisi hapus.
      */
+    private static boolean isBlank(CharSequence cs) {
+        if (cs == null) return true;
+        int len = cs.length();
+        for (int i = 0; i < len; i++) {
+            if (!Character.isWhitespace(cs.charAt(i))) return false;
+        }
+        return true;
+    }
+
     private static void burst(Node node, int level, int rs, int re) {
         TextView tv = node.ref.get();
         // cy10.2: guard diperkuat getVisibility -> isShown (attached +
@@ -1181,8 +1209,7 @@ public final class GlitchText {
         // isShown=true -> jalur identik; view tersembunyi tetap 0 piksel.
         if (tv == null || !tv.isShown()) return;
         CharSequence cur = tv.getText();
-        String s = cur == null ? "" : cur.toString();
-        if (s.trim().isEmpty()) return;
+        if (isBlank(cur)) return;
 
         if (node.spannable) {
             // Base = teks dasar (bukan kilatan sebelumnya) agar span
@@ -1485,12 +1512,14 @@ public final class GlitchText {
         @Override public void onTextChanged(
                 CharSequence s, int start, int before, int count) {
             if (sApplying || !isGlitchEnabled()) return;
+            TextView target = node.ref.get();
+            if (target == null || !target.isShown()) return;
             final int st = start, bf = before, ct = count;
             // Post ringan: biarkan layout selesai dulu baru glitch.
             H.postDelayed(() -> {
                 if (sApplying || !isGlitchEnabled()) return;
                 TextView tv = node.ref.get();
-                if (tv == null) return;
+                if (tv == null || !tv.isShown()) return;
                 boolean deletion = ct == 0 && bf > 0;
                 if (node.input) {
                     // Ketik/hapus = korupsi region pada EditText ITU saja.
