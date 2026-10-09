@@ -6,12 +6,39 @@ versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
 ## [cy10.11] — 2026-10-09
 
+### Added (tes)
+- **Tes JUnit pada kode Java sebenarnya — simulasi Python
+  dipensiunkan**: seluruh logika verdict Mode IP per-app diekstrak ke
+  kelas murni `IpModeVerdict` (tanpa dependensi Android); VpnEngine
+  mendelegasikan semua verdict (modeCode, synAction, verdictAction,
+  udpVerdict, dnsPolicy, uidVerdictMode/Label, effFamilyV6,
+  isV4EmbeddedV6) dan jalur paket handleUdp/handleUdp6/forwardDns/
+  cutConflictingFlows memanggil fungsi yang sama. 43 tes
+  (IpModeVerdictTest 37 + FailClosedSideEffectsTest 6), 0 gagal,
+  `./gradlew testDebugUnitTest`: BLOCK v4/v6 TCP/UDP/DNS, mode paksa
+  + guard dual, IPv4-mapped & NAT64 (+6to4/Teredo dipertegas sbg
+  batas), pemilik tak dikenal, UDP/QUIC, DNS kill/prefer, shared-UID
+  deterministik, invarian UDP==TCP utk pemilik dikenal.
+- **Dampak samping fail-closed DIBUKTIKAN TES** (bukan teori): app
+  lain yang atribusinya berhasil TIDAK tersentuh; paket family-diblok
+  yang pemiliknya gagal diatribusikan (race conntrack / exception
+  binder / UID sistem tanpa paket) DIBUANG walau kemungkinan milik
+  app lain — harga kebijakan fail-closed cy10.10, dampak terbatas
+  ke family yang diblok, tanpa BLOCK tidak menyala. minSdk 34 ≥ 29 →
+  tidak ada cabang API-tua.
+- **Celah mode proxy murni terdokumentasi (G12) + usulan perbaikan
+  (BELUM diterapkan)**: SOCKS5 127.0.0.1:1080 milik engine Go tidak
+  melewati TUN → BLOCK/mode per-app tidak berlaku; IP literal IPv4
+  lewat proxy BERHASIL utk app yang seharusnya di-BLOCK. Usulan:
+  relay Java di 1080 (atribusi UID conntrack + verdict IpModeVerdict
+  + forward ke unix socket engine, tolak = SOCKS5 reply 0x02).
+
 ### Fixed (build)
 - **Build + lint pertama kali benar-benar dijalankan** (laporan cy10.10
   tidak menyertakan build — sandbox sebelumnya tanpa Android SDK).
   `assembleDebug` lolos sejak commit 1c92b6b (kode cy10.10 utuh, tidak
-  ada sisa typo); `lintDebug` menemukan 3 error, semuanya diperbaiki
-  dari akar:
+  ada sisa typo — semua hunk di-review ulang manual); `lintDebug`
+  menemukan 3 error, semuanya diperbaiki dari akar:
   - `WrongViewCast` di `MainActivity:290/:2940` — Java me-cast
     `findViewById` ke `MaterialButton` sementara XML masih tag `<Button>`
     (kebetulan di-inflate `MaterialButton` oleh tema M3). Fix: tag XML

@@ -75,4 +75,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'tech.kwik:kwik:0.8.13'
     debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
+    // cy10.11: tes unit lokal (JUnit 4, JVM murni) utk logika verdict
+    // IpModeVerdict - menggantikan mirror Python cy10.10; tes kini
+    // menguji kode yang benar-benar dipakai data plane VpnEngine.
+    testImplementation 'junit:junit:4.13.2'
 }

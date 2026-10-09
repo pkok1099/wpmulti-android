@@ -240,16 +240,11 @@ public class VpnEngine extends VpnService {
 
     // cy10.7: mode IP per-app sebagai kode int (lebih murah daripada
     // String.equals di jalur paket). 0 = tanpa mode.
-    private static int modeCode(String m) {
-        if (m == null) return 0;
-        switch (m) {
-            case "v4": return 1;
-            case "v6": return 2;
-            case "block4": return 3;
-            case "block6": return 4;
-            default: return 0;
-        }
-    }
+    // cy10.11: logika verdict dipindah KE IpModeVerdict (kelas murni
+    // tanpa dependensi Android) supaya bisa diuji JUnit langsung di
+    // JVM — tes menguji kode yang benar-benar dipakai data plane,
+    // menggantikan mirror Python cy10.10. Kode mode/aksi: konstanta
+    // IpModeVerdict.M_* dan PASS / DROP_SILENT / REJECT.
 
     /** Pemilik aliran + mode IP-nya (cy10.7). cy10.10: menyimpan DAFTAR
      * paket pemilik UID (bukan satu) supaya verdict dapat dihitung ULANG
@@ -324,96 +319,47 @@ public class VpnEngine extends VpnService {
      * menang, urutan getPackagesForUid tidak dijamin). label = paket
      * penentu (utk statistik), fallback paket pertama. */
     private FlowOwner uidVerdict(String[] pkgs) {
-        int best = 0;
-        String label = null;
+        // cy10.11: logika di IpModeVerdict (murni, diuji JUnit).
         java.util.Map<String, String> aim = appIpModes;
-        for (String p : pkgs) {
-            int m = modeCode(aim.get(p));
-            if (m == 3 || m == 4) { best = m; label = p; break; }
-            if ((m == 1 || m == 2) && best == 0) { best = m; label = p; }
-        }
-        if (label == null) label = pkgs[0];
-        return new FlowOwner(best, pkgs, label);
+        return new FlowOwner(IpModeVerdict.uidVerdictMode(pkgs, aim),
+                pkgs, IpModeVerdict.uidVerdictLabel(pkgs, aim));
     }
 
     /** Mode pemilik dihitung ulang dari paket yang DI-CACHE pada
      * FlowOwner terhadap map mode SAAT INI (tanpa lookup conntrack
-     * baru) — dipakai cutConflictingFlows saat live apply. */
-    private int uidVerdictCached(FlowOwner o) {
-        if (o == null || o.pkgs == null || o.pkgs.length == 0) return 0;
-        int best = 0;
-        for (String p : o.pkgs) {
-            int m = modeCode(appIpModes.get(p));
-            if (m == 3 || m == 4) return m;
-            if ((m == 1 || m == 2) && best == 0) best = m;
-        }
-        return best;
-    }
+     * baru) — dipakai cutConflictingFlows saat live apply.
+     * cy10.11: logika di IpModeVerdict.uidVerdictMode (murni, diuji
+     * JUnit); fungsi lokal dihapus, cutConflictingFlows memanggil
+     * IpModeVerdict.uidVerdictMode langsung. */
 
     /**
-     * Aksi utk SYN TCP milik app ber-mode: 0 = teruskan, 1 = drop diam
-     * (perilaku lama mode v4/v6 - Happy Eyeballs), 2 = TOLAK CEPAT via
-     * RST (mode BLOCK, req 2b). Mode v4/v6 hanya aktif saat global dual
-     * (perilaku lama); BLOCK berlaku di SEMUA mode global karena TUN
-     * di-auto-capture dual bila ada app BLOCK (lihat onStartCommand).
-     * cy10.10: berbasis KODE MODE (dipakai juga utk verdict dari cache
-     * cutConflictingFlows) + family EFEKTIF (lihat effFamilyV6).
-     */
-    private int synAction(int mode, boolean effV6) {
-        switch (mode) {
-            case 1: return "dual".equals(ipMode) && effV6 ? 1 : 0;
-            case 2: return "dual".equals(ipMode) && !effV6 ? 1 : 0;
-            case 3: return effV6 ? 0 : 2; // BLOCK v4
-            case 4: return effV6 ? 2 : 0; // BLOCK v6
-        }
-        return 0;
-    }
-
-    /**
-     * cy10.10: verdict LENGKAP utk aliran BARU — memutus juga kasus
-     * pemilik TIDAK DIKETAHUI (o == null): FAIL-CLOSED utk family yang
-     * sedang diblok minimal satu app (blockV4Active/blockV6Active) ->
-     * aksi 2 (tolak cepat), dihitung sbg drop "(unknown)" di statistik.
-     * Sebelum cy10.10 pemilik tak dikenal selalu lolos (fail-open, G7):
-     * app bisa menghindari BLOCK bila atribusi conntrack meleset.
-     * Mode paksa v4/v6 TIDAK difail-close-kan (aturan per-app tak bisa
-     * ditebak tanpa pemilik; blok tetap tertutup jalur ini).
+     * cy10.10: verdict LENGKAP utk aliran BARU (TCP) — memutus juga
+     * kasus pemilik TIDAK DIKETAHUI (o == null): FAIL-CLOSED utk family
+     * yang sedang diblok minimal satu app (blockV4Active/blockV6Active)
+     * -> aksi 2 (tolak cepat), dihitung sbg drop "(unknown)" di
+     * statistik. Sebelum cy10.10 pemilik tak dikenal selalu lolos
+     * (fail-open, G7): app bisa menghindari BLOCK bila atribusi
+     * conntrack meleset. Mode paksa v4/v6 TIDAK difail-close-kan
+     * (aturan per-app tak bisa ditebak tanpa pemilik; blok tetap
+     * tertutup jalur ini).
+     * cy10.11: logika di IpModeVerdict.verdictAction/synAction (murni,
+     * diuji JUnit — termasuk aksi mode paksa "drop diam" Happy
+     * Eyeballs yang hanya aktif saat global dual) — engine hanya
+     * mendelegasikan.
      */
     private int verdictAction(FlowOwner o, boolean effV6) {
-        if (o == null) {
-            if (!effV6 && blockV4Active) return 2;
-            if (effV6 && blockV6Active) return 2;
-            return 0;
-        }
-        return synAction(o.mode, effV6);
-    }
-
-    /** cy10.10: alamat IPv6 yang membawa alamat IPv4 ter-embed —
-     * ::ffff:0:0/96 (IPv4-mapped, RFC 4291) dan 64:ff9b::/96 (prefiks
-     * NAT64 well-known RFC 6052 — dipakai 464XLAT/Android di jaringan
-     * v6-only). Koneksi ke alamat begini menjangkau tujuan IPv4; utk
-     * verdict BLOCK/paksa dihitung family v4 — tanpa ini app BLOCK v4
-     * bisa lolos lewat socket AF_INET6 + alamat ter-embed. (6to4
-     * 2002::/16 & Teredo 2001:0::/32 tidak dibedakan — butuh infra
-     * relay khusus yang deprecated; tercatat di KNOWN_ISSUES.) */
-    private static boolean isV4EmbeddedV6(byte[] a) {
-        if (a == null || a.length != 16) return false;
-        boolean zeros10 = true;
-        for (int i = 0; i < 10; i++) if (a[i] != 0) { zeros10 = false; break; }
-        if (zeros10 && (a[10] & 0xFF) == 0xFF && (a[11] & 0xFF) == 0xFF)
-            return true; // ::ffff:0:0/96
-        if ((a[0] & 0xFF) == 0x00 && (a[1] & 0xFF) == 0x64
-                && (a[2] & 0xFF) == 0xFF && (a[3] & 0xFF) == 0x9B) {
-            for (int i = 4; i < 12; i++) if (a[i] != 0) return false;
-            return true; // 64:ff9b::/96
-        }
-        return false;
+        return IpModeVerdict.verdictAction(
+                o == null ? null : o.mode, effV6,
+                blockV4Active, blockV6Active, ipMode);
     }
 
     /** Family EFEKTIF utk verdict: tujuan 16-byte ter-embed-v4
-     * dihitung v4; selain itu family = family kabel. */
+     * (::ffff:0:0/96 IPv4-mapped, 64:ff9b::/96 NAT64) dihitung v4;
+     * selain itu family = family kabel. cy10.11: logika di
+     * IpModeVerdict (murni, diuji JUnit) — engine hanya
+     * mendelegasikan. */
     private static boolean effFamilyV6(byte[] dstB) {
-        return dstB != null && dstB.length == 16 && !isV4EmbeddedV6(dstB);
+        return IpModeVerdict.effFamilyV6(dstB);
     }
 
     @Override
@@ -732,28 +678,26 @@ public class VpnEngine extends VpnService {
      * (konsisten handleUdp*). Flow app LAIN tidak pernah tersentuh.
      */
     private int cutConflictingFlows() {
+        // cy10.11: verdict di IpModeVerdict (murni, diuji JUnit) — TCP
+        // = verdictAction (fail-closed + synAction), UDP = udpVerdict
+        // (BLOCK family efektif + mode paksa + fail-closed) — identik
+        // dgn jalur paket handleTcp*/handleUdp*.
         int n = 0;
         for (TcpConn c : tcpConns.values()) {
             boolean effV6 = effFamilyV6(c.dstB);
-            int act;
-            if (c.owner == null) {
-                act = (effV6 ? blockV6Active : blockV4Active) ? 2 : 0;
-            } else {
-                act = synAction(uidVerdictCached(c.owner), effV6);
-            }
-            if (act != 0) { c.resetHard(); n++; }
+            int act = IpModeVerdict.verdictAction(
+                    c.owner == null ? null
+                            : IpModeVerdict.uidVerdictMode(c.owner.pkgs, appIpModes),
+                    effV6, blockV4Active, blockV6Active, ipMode);
+            if (act != IpModeVerdict.PASS) { c.resetHard(); n++; }
         }
         for (UdpFlow f : udpFlows.values()) {
             boolean effV6 = effFamilyV6(f.dstB);
-            boolean cut;
-            if (f.owner == null) {
-                cut = effV6 ? blockV6Active : blockV4Active;
-            } else {
-                int mode = uidVerdictCached(f.owner);
-                cut = (mode == 3 && !effV6) || (mode == 4 && effV6)
-                        || synAction(mode, effV6) == 1;
-            }
-            if (cut) { f.unreachAndClose(); n++; }
+            int act = IpModeVerdict.udpVerdict(
+                    f.owner == null ? null
+                            : IpModeVerdict.uidVerdictMode(f.owner.pkgs, appIpModes),
+                    effV6, blockV4Active, blockV6Active, ipMode);
+            if (act != IpModeVerdict.PASS) { f.unreachAndClose(); n++; }
         }
         return n;
     }
@@ -1136,17 +1080,18 @@ public class VpnEngine extends VpnService {
         FlowOwner o = null;
         if (!appIpModes.isEmpty()) {
             o = flowOwner(false, 17, srcB, srcPort, dstB, dstPort);
-            if (o != null && o.mode == 3) { // BLOCK v4, paket v4
-                countBlockDrop(o.label, false);
+            // cy10.11: verdict terpadu IpModeVerdict.udpVerdict (murni,
+            // diuji JUnit): REJECT = BLOCK v4 / fail-closed pemilik tak
+            // dikenal (unreach + statistik), DROP_SILENT = mode paksa v6.
+            int act = IpModeVerdict.udpVerdict(
+                    o == null ? null : o.mode, false,
+                    blockV4Active, blockV6Active, ipMode);
+            if (act == IpModeVerdict.REJECT) {
+                countBlockDrop(o != null ? o.label : "(unknown)", false);
                 sendUnreach(false, srcB, dstB, pkt);
                 return;
             }
-            if (o == null && blockV4Active) { // pemilik tak dikenal
-                countBlockDrop("(unknown)", false);
-                sendUnreach(false, srcB, dstB, pkt);
-                return;
-            }
-            if (o != null && synAction(o.mode, false) == 1) {
+            if (act == IpModeVerdict.DROP_SILENT) {
                 return; // mode paksa: drop diam (mirror SYN TCP)
             }
         }
@@ -1186,22 +1131,20 @@ public class VpnEngine extends VpnService {
         if (!appIpModes.isEmpty()) {
             boolean effV6 = effFamilyV6(dst6);
             o6 = flowOwner(true, 17, src6, srcPort, dst6, dstPort);
-            if (o6 != null && effV6 && o6.mode == 4) { // BLOCK v6 native
-                countBlockDrop(o6.label, true);
+            // cy10.11: verdict terpadu IpModeVerdict.udpVerdict (murni,
+            // diuji JUnit): REJECT = BLOCK family efektif (v6 native
+            // / v4-via-embed) / fail-closed; DROP_SILENT = mode paksa
+            // family lawan. Unreach tetap ICMPv6 (family kabel — kernel
+            // mengaitkan error ke socket AF_INET6 app).
+            int act = IpModeVerdict.udpVerdict(
+                    o6 == null ? null : o6.mode, effV6,
+                    blockV4Active, blockV6Active, ipMode);
+            if (act == IpModeVerdict.REJECT) {
+                countBlockDrop(o6 != null ? o6.label : "(unknown)", effV6);
                 sendUnreach(true, src6, dst6, pkt);
                 return;
             }
-            if (o6 != null && !effV6 && o6.mode == 3) { // BLOCK v4 via v6-embed
-                countBlockDrop(o6.label, false);
-                sendUnreach(true, src6, dst6, pkt);
-                return;
-            }
-            if (o6 == null && (effV6 ? blockV6Active : blockV4Active)) {
-                countBlockDrop("(unknown)", effV6);
-                sendUnreach(true, src6, dst6, pkt);
-                return;
-            }
-            if (o6 != null && synAction(o6.mode, effV6) == 1) {
+            if (act == IpModeVerdict.DROP_SILENT) {
                 return; // mode paksa: drop diam
             }
         }
@@ -1241,29 +1184,21 @@ public class VpnEngine extends VpnService {
         if (!appIpModes.isEmpty()) {
             o = flowOwner(v6, 17, srcB, srcPort, replySrc, 53);
         }
-        // cy10.10: qtype yang dijawab NODATA:
-        // - BLOCK v4/v6 (semua mode global, req 2c): A / AAAA;
-        // - mode paksa v4/v6 (hanya global dual): family lawan —
-        //   "hanya via IPv6" kini benar-benar menolak resolusi A;
-        // - pemilik TAK DIKETAHUI + family itu sedang diblok:
-        //   FAIL-CLOSED (NODATA — bukan diteruskan; data plane juga
-        //   menolak family itu, jawaban kosong = gagal cepat & konsisten).
-        boolean killA = false, killAAAA = false;
-        if (o != null) {
-            if (o.mode == 3) killA = true;               // BLOCK v4
-            else if (o.mode == 4) killAAAA = true;       // BLOCK v6
-            else if (o.mode == 1 && "dual".equals(ipMode)) killAAAA = true;
-            else if (o.mode == 2 && "dual".equals(ipMode)) killA = true;
-        } else if (blockV4Active || blockV6Active) {
-            if (blockV4Active) killA = true;
-            if (blockV6Active) killAAAA = true;
-        }
+        // cy10.11: kebijakan kill/prefer di IpModeVerdict.dnsPolicy
+        // (murni, diuji JUnit): BLOCK v4/v6 (semua mode global, req 2c)
+        // -> A/AAAA NODATA; mode paksa v4/v6 (HANYA global dual) ->
+        // family lawan NODATA ("hanya via IPv6" benar-benar menolak
+        // resolusi A); pemilik TAK DIKETAHUI + family itu sedang diblok
+        // -> FAIL-CLOSED (NODATA — bukan diteruskan; data plane juga
+        // menolak family itu, jawaban kosong = gagal cepat & konsisten).
+        IpModeVerdict.DnsPolicy dp = IpModeVerdict.dnsPolicy(
+                o == null ? null : o.mode,
+                blockV4Active, blockV6Active, ipMode);
+        boolean killA = dp.killA, killAAAA = dp.killAAAA;
         // preferFamily (family upstream yang DIUTAMAKAN, kebalikan blok):
         // hanya utk mode BLOCK - mode paksa tidak mengubah jalur upstream
         // kita (socket milik proses VPN, bukan milik app).
-        int preferFamily = 0;
-        if (o != null && o.mode == 3) preferFamily = 6;
-        else if (o != null && o.mode == 4) preferFamily = 4;
+        int preferFamily = dp.preferFamily;
         if (killA || killAAAA) {
             int qEnd = dnsQuestionEnd(query);
             if (qEnd > 0) {

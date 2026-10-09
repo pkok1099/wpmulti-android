@@ -346,6 +346,74 @@ sandbox (tanpa Android SDK) — checklist C.6 baru di bawah.
 
 **Commit**: cy10.10.
 
+### 11. cy10.11 — verifikasi build/tes nyata + dampak samping
+###     fail-closed + celah mode proxy murni
+
+**Build & lint (A1)**: `assembleDebug` + `lintDebug` pertama kali
+benar-benar dijalankan (sandbox kini punya Android SDK). Build lolos
+sejak 1c92b6b — review manual ulang semua hunk diff cy10.10 tidak
+menemukan sisa typo. Lint: 3 error diperbaiki dari akar (2x
+WrongViewCast: tag XML `<Button>` → kelas eksplisit MaterialButton;
+QueryAllPackagesPermission: `tools:ignore` + justifikasi — izin
+memang dibutuhkan `getInstalledApplications(0)`).
+
+**Tes JUnit menggantikan simulasi Python (A2)**: seluruh logika
+verdict diekstrak ke `IpModeVerdict.java` (kelas MURNI, tanpa
+dependensi Android) — VpnEngine mendelegasikan (modeCode, synAction,
+verdictAction, udpVerdict, dnsPolicy, uidVerdictMode/Label,
+effFamilyV6/isV4EmbeddedV6; jalur paket handleUdp/handleUdp6/
+forwardDns/cutConflictingFlows kini memanggil fungsi yang sama).
+Identitas fungsi = by-construction (delegasi), bukan salinan manual.
+Tes: `app/src/test/` — IpModeVerdictTest (37) + FailClosedSideEffectsTest
+(6) = **43 tes, 0 gagal** (`./gradlew testDebugUnitTest`). Cakupan:
+BLOCK v4/v6 TCP/UDP/DNS, mode paksa (guard dual), IPv4-mapped
+::ffff:/96, NAT64 64:ff9b::/96 (+varian non-/96 ditolak, 6to4/Teredo
+tidak dibedakan — batas dipertegas), pemilik tak dikenal (fail-closed
+per family), UDP/QUIC, DNS killA/killAAAA/preferFamily, shared-UID
+BLOCK-menang + label deterministik, invarian UDP==TCP verdict utk
+pemilik dikenal.
+
+**Dampak samping fail-closed (A3) — DIBUKTIKAN TES, bukan teori**
+(`FailClosedSideEffectsTest`, replika rantai
+flowOwner→verdict persis engine):
+1. App lain yang atribusinya BERHASIL → TIDAK tersentuh (PASS dua
+   family) walau ada app BLOCK — normal traffic aman.
+2. **Sisi gelap terbukti**: paket IPv4 milik siapa pun (kemungkinan
+   app lain) yang pemiliknya GAGAL diatribusikan — race conntrack
+   (entri belum terlihat netd), exception binder, atau UID sistem
+tanpa paket (`getPackagesForUid` kosong → flowOwner null :314) —
+   DIBUANG saat family itu diblok siapa pun (REJECT). Ini memang
+   harga kebijakan fail-closed yang diminta eksplisit cy10.10
+   ("atribusi gagal → tetap buang"), bukan bug — tapi konsekuensinya
+   nyata: aplikasi lain bisa kehilangan konektivitas family-yang-
+   diblok secara INTERMITTEN saat lookup conntrack kalah race.
+   Mitigasi yang ada: kegagalan lookup TIDAK di-cache (retry tiap
+   paket — lookup umumnya berhasil pada paket ke-2), statistik
+   "(unknown)" terlihat di BLOCK[30s], dan dampak TERBATAS pada
+   family yang diblok saja (v6 tetap lolos saat hanya v4 diblok —
+   dibuktikan tes).
+3. Tanpa app BLOCK sama sekali → pemilik tak dikenal tetap lolos
+   (fail-closed tidak menyala) — dibuktikan tes.
+4. minSdk 34 ≥ API 29: `getConnectionOwnerUid` selalu tersedia, tidak
+   ada cabang legacy "API terlalu tua" di flowOwner (satu-satunya
+   jalur fallback = null → verdict).
+
+**Mode proxy murni (A4) — kondisi NYATA IPv4 literal lewat proxy**:
+SOCKS5 server hidup di engine Go (AAR prebuilt, proses `:goengine`):
+`Mobile.start(confDir, "127.0.0.1:1080", "127.0.0.1:8080")`
+(GoEngineService.java:39,:68). Saat VPN MATI (mode proxy murni),
+app yang diarahkan manual ke 127.0.0.1:1080 mengirim SOCKS5 CONNECT
+(ATYP 0x01 = IPv4 literal) LANGSUNG ke listener Go — tidak pernah
+melewati TUN, jadi TIDAK ada verdictAction/flowOwner/BLOCK/BYPASS/
+mode paksa/DNS-filter sama sekali: koneksi IPv4 literal app yang
+seharusnya di-BLOCK v4 **BERHASIL** lewat proxy. Catatan tambahan:
+listener 1080 di loopback tetap bisa diakses app manapun bahkan saat
+VPN hidup (loopback tidak dirutekan ke TUN) — jalur bypass arsitektur
+lama. → G12 (dengan usulan perbaikan, BELUM diterapkan sesuai
+permintaan).
+
+**Commit**: cy10.11.
+
 ## B. Item menunggu konfirmasi user (K1–K7, dari audit cy10.2)
 
 | # | Temuan | Mengapa belum diubah | Kalau dijalankan |
@@ -406,6 +474,7 @@ jujur, TIDAK diklaim "tidak ada kebocoran":
 | G9 | UDP one-shot dgn port sumber baru per paket | Cache verdict miss → lookup per paket (beban CPU, bukan bocor) | Perilaku app; lookup tetap benar hanya lebih mahal |
 | G10 | Live-apply mode BLOCK saat global non-dual DAN TUN tidak menangkap family yang diblok (BLOCK baru pertama kali utk family itu, tanpa restart) | Verdict/SYN/UDP/DNS baru sudah ditegakkan, tetapi paket versi itu TIDAK PERNAH masuk TUN → tidak bisa ditolak; koneksi lama versi itu sudah diputus | Route VpnService ditetapkan saat establish dan tidak ada API utk mengubahnya pada sesi jalan; re-establish in-place menciptakan jendela gap route (= bocor sesaat — lebih buruk). UI memberi tahu via HUD "restart VPN utk penegakan penuh" + log; restart berikutnya otomatis dual-capture |
 | G11 | ~~Atribusi conntrack UDP bisa kedaluwarsa saat live-apply~~ **TERTUTUP cy10.10** | cutConflictingFlows kini memakai PEMILIK yang di-CACHE saat flow di-admit (TcpConn.owner/UdpFlow.owner) — tanpa lookup conntrack baru; flow app yang baru di-BLOCK pasti terpotong; pemilik tak dikenal diputus fail-closed bila family-nya kini diblok | Cache disimpan saat admit (lookup conntrack hampir selalu berhasil di situ); mode dihitung ulang dari daftar paket UID yang di-cache terhadap map terbaru |
+| G12 | **Mode proxy murni (VPN mati)**: SOCKS5 127.0.0.1:1080 (engine Go, GoEngineService :39/:68) tidak melewati TUN → BLOCK/BYPASS/mode paksa/DNS-filter TIDAK berlaku; IP literal IPv4 (ATYP 0x01) lewat proxy BERHASIL utk app yang seharusnya di-BLOCK v4. Listener loopback juga bisa diakses app manapun walau VPN hidup (loopback tak pernah dirutekan ke TUN) — jalur bypass arsitektur lama | Penegakan berada di data plane TUN (handleTcp/Udp/DNS) — trafik proxy langsung ke listener Go tidak tersentuh; go-socks5 tidak punya atribusi UID/per-app | **Usulan perbaikan sisi proxy (cy10.11, BELUM diterapkan sesuai permintaan):** pindahkan listener 1080 dari Go ke relay JAVA di proses app: (1) Java accept() klien loopback → atribusi UID via `ConnectivityManager.getConnectionOwnerUid` 4-tuple koneksi loopback itu (API sama dgn flowOwner — catatan: perlu verifikasi device bahwa netd conntrack melacak koneksi loopback; bila tidak, fallback: connect() balik ke 127.0.0.1:peerport tidak mungkin → opsi kedua = listener unix-socket per app yang dikonfigurasi lewat AIDL); (2) verdict family target CONNECT pakai `IpModeVerdict` APA ADANYA (ATYP 0x01 & ATYP 0x04 dgn ::ffff:/96 + 64:ff9b::/96 → v4, mode paksa, fail-closed saat UID tak teratribusi dan family diblok); (3) koneksi diizinkan → forward ke unix socket engine `socksPath` (mekanisme sama dgn relay TUN — connectViaSocks :1861); ditolak → SOCKS5 reply 0x02 "connection not allowed by ruleset" (mirror RST: app dapat error seketika, fallback cepat); (4) UDP ASSOCIATE: cek family target aturan sama. Keuntungan: semua logika tetap di Java (satu sumber, diuji JUnit), tanpa rebuild Go. Alternatif Go-only (lebih murah per-koneksi tapi butuh rebuild AAR + plumbing map mode via AIDL baru): verdict di handler CONNECT go-socks5 + UID dari tag SELinux `getsockopt(SO_PEERSEC)`? — tidak tersedia utk TCP loopback; /proc/net/tcp sejak Android 10 hanya menampilkan socket milik UID sendiri → atribusi dari Go praktis tidak bisa andal |
 
 Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
 - Query DNS app BLOCK ke server versi yang diblok TETAP dijawab lokal
@@ -518,3 +587,23 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
    - legenda: titik BLOCK v4 kini kuning-hijau (acid), terbedakan
      jelas dari merah BLOCK v6; ada baris penjelas dua makna
      "bypass" + baris fail-closed.
+
+### C.7. Checklist device cy10.11 (tes JVM vs device)
+
+Tes JUnit (43) menguji logika verdict di JVM — yang TIDAK bisa
+dijalankan sandbox dan wajib dicek di perangkat fisik:
+1. **Attribution asli conntrack** — flowOwner memakai binder
+   `getConnectionOwnerUid` nyata; jalur fail-closed "(unknown)" hanya
+   teramati saat conntrack benar-benar gagal (lihat C.6 no. 8).
+2. **Dampak samping fail-closed di dunia nyata** (§11 A3): dengan satu
+   app BLOCK v4 aktif, monitor `BLOCK[30s] (unknown)` — harus tetap
+   ~0 di jaringan normal (race conntrack jarang); bila angkanya
+   besar, atribusi conntrack di ROM itu bermasalah → pertimbangkan
+   whitelist UID sistem (perubahan kebijakan, diskusikan dulu).
+3. **Proxy murni (G12)**: VPN mati + engine jalan + browser proxy
+   manual 127.0.0.1:1080 ke IP literal IPv4 dari app yang di-BLOCK v4
+   → saat ini BERHASIL (gap terdokumentasi); jangan lapor sbg bug
+   baru — sampai usulan perbaikan G12 diterapkan.
+4. **Refactor delegasi IpModeVerdict tidak mengubah perilaku**: blok
+   2-11 di C.6 tetap lulus tanpa perubahan (fungsi identik, hanya
+   pindah rumah).
