@@ -10,8 +10,11 @@
     <string name="ip_mode_block4">BLOCK v4</string>
     <string name="ip_mode_block6">BLOCK v6</string>
     <string name="ip_mode_global_desc">\u2014 ikut pengaturan utama</string>
-    <string name="ip_mode_v4_desc">\u2014 paksa IPv4 utk app ini</string>
-    <string name="ip_mode_v6_desc">\u2014 paksa IPv6 utk app ini</string>
-    <string name="ip_mode_block4_desc">\u2014 tolak IPv4, hanya v6</string>
-    <string name="ip_mode_block6_desc">\u2014 tolak IPv6, hanya v4</string>
+    <!-- cy10.10: desc menyatakan EFEK NYATA — paksa = versi lawan
+         DIBUANG di tunnel (bukan keluar VPN), termasuk UDP/QUIC + DNS
+         (jawaban lawan = NODATA). -->
+    <string name="ip_mode_v4_desc">\u2014 paksa IPv4; paket &amp; DNS IPv6 dibuang di tunnel</string>
+    <string name="ip_mode_v6_desc">\u2014 paksa IPv6; paket &amp; DNS IPv4 dibuang di tunnel</string>
+    <string name="ip_mode_block4_desc">\u2014 buang SEMUA IPv4 app ini (TCP/UDP/QUIC/DNS)</string>
+    <string name="ip_mode_block6_desc">\u2014 buang SEMUA IPv6 app ini (TCP/UDP/QUIC/DNS)</string>
 </resources>

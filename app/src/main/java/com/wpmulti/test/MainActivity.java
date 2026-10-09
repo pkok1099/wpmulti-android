@@ -808,6 +808,9 @@ public class MainActivity extends AppCompatActivity {
         // cy10.7: BLOCK v4 = oranye-salmon (status_coral), BLOCK v6 = merah
         // (status_red) - keluarga warna baru utk blokir, jelas beda dari
         // cyan/magenta mode paksa. Wash + stroke dari token yang sama.
+        // cy10.10: BLOCK v4 = status_amber (acid) — coral vs red terlalu
+        // mirip pada ukuran chip/dot; amber tetap token palet (tanpa hue
+        // baru) dan kontrasnya vs red maksimal (kuning-hijau vs merah).
         if (mode.equals("v4")) {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_v4);
             btn.setTextColor(getColor(R.color.m3_primary));
@@ -816,7 +819,7 @@ public class MainActivity extends AppCompatActivity {
             btn.setTextColor(getColor(R.color.m3_tertiary));
         } else if (mode.equals("block4")) {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_block4);
-            btn.setTextColor(getColor(R.color.status_coral));
+            btn.setTextColor(getColor(R.color.status_amber));
         } else if (mode.equals("block6")) {
             btn.setBackgroundResource(R.drawable.bg_chip_mode_block6);
             btn.setTextColor(getColor(R.color.status_red));
@@ -827,15 +830,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateVpnIpModeCount() {
+        final int count = countAppIpModes();
+        ui.post(() -> vpnIpModeAppCount.setText(
+                count == 0 ? "Belum ada aplikasi diatur"
+                        : count + " aplikasi diatur"));
+    }
+
+    /** cy10.10: jumlah app yang punya mode IP per-app (dipakai counter +
+     * peringatan saat mode global berubah ke non-dual). */
+    private int countAppIpModes() {
         int n = 0;
         for (String k : getSharedPreferences("vpn", MODE_PRIVATE)
                 .getAll().keySet()) {
             if (k.startsWith("vpn_app_ip_")) n++;
         }
-        final int count = n;
-        ui.post(() -> vpnIpModeAppCount.setText(
-                count == 0 ? "Belum ada aplikasi diatur"
-                        : count + " aplikasi diatur"));
+        return n;
+    }
+
+    /** cy10.10: apakah app ini di-bypass split tunnel (tidak masuk TUN)?
+     * Mode IP per-app tidak berlaku utk app begini (G1) — UI harus
+     * menandainya, bukan diam saja. Basis: prefs vpn_app_mode
+     * ("all"/"allow"/"deny") + set vpn_apps, sama dgn jalur start VPN. */
+    private boolean isAppBypassed(String pkg) {
+        android.content.SharedPreferences vp =
+                getSharedPreferences("vpn", MODE_PRIVATE);
+        String am = vp.getString("vpn_app_mode", "all");
+        java.util.Set<String> apps = vp.getStringSet("vpn_apps",
+                new java.util.HashSet<>());
+        if ("allow".equals(am)) return !apps.contains(pkg);
+        if ("deny".equals(am)) return apps.contains(pkg);
+        return false; // "all"
     }
 
     // Semua aplikasi terinstal (user + sistem), urut alfabetis.
@@ -1065,18 +1089,23 @@ public class MainActivity extends AppCompatActivity {
         // (2) catatan berlakunya diperbarui: perubahan kini LIVE saat VPN
         // aktif (bukan lagi "nyalakan ulang"); (3) catatan mode v4/v6
         // hanya aktif saat global Dual-stack (BLOCK semua mode global).
+        // cy10.10: (1) tiap baris kini MENYATAKAN EFEK NYATA (BYPASS
+        // per-app = versi itu DIBUANG di tunnel, bukan keluar VPN);
+        // (2) BLOCK v4 = status_amber (acid) — coral vs red terlalu
+        // mirip di titik legenda 11px (permintaan eksplisit); (3) baris
+        // beda makna "bypass" global vs per-app + catatan fail-closed.
         String[][] rows = {
                 {"\u25A0", "GLOBAL", " \u2014 ikut mode IP pengaturan utama"},
-                {"\u25A0", "IPv4 / BYPASS v6", " \u2014 paksa koneksi IPv4 utk app ini"},
-                {"\u25A0", "IPv6 / BYPASS v4", " \u2014 paksa koneksi IPv6 utk app ini"},
-                {"\u25A0", "BLOCK v4", " \u2014 tolak IPv4, app ini hanya IPv6"},
-                {"\u25A0", "BLOCK v6", " \u2014 tolak IPv6, app ini hanya IPv4"},
+                {"\u25A0", "IPv4 / BYPASS v6", " \u2014 paket IPv6 app ini dibuang DI DALAM tunnel (bukan keluar VPN); app dipaksa pakai IPv4"},
+                {"\u25A0", "IPv6 / BYPASS v4", " \u2014 paket IPv4 app ini dibuang di dalam tunnel; app dipaksa pakai IPv6"},
+                {"\u25A0", "BLOCK v4", " \u2014 semua trafik IPv4 app dibuang: TCP, UDP/QUIC, DNS (jawaban A = kosong)"},
+                {"\u25A0", "BLOCK v6", " \u2014 semua trafik IPv6 app dibuang: TCP, UDP/QUIC, DNS (jawaban AAAA = kosong)"},
         };
         int[] cols = {
                 getColor(R.color.m3_on_surface_variant),
                 getColor(R.color.m3_primary),
                 getColor(R.color.m3_tertiary),
-                getColor(R.color.status_coral),
+                getColor(R.color.status_amber),
                 getColor(R.color.status_red),
         };
         for (int i = 0; i < rows.length; i++) {
@@ -1109,6 +1138,27 @@ public class MainActivity extends AppCompatActivity {
                 + "Dual-stack; BLOCK aktif di semua mode global.");
         sb.setSpan(new android.text.style.ForegroundColorSpan(
                         getColor(R.color.glitch_white)), cStart, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // cy10.10: BEDAKAN dua makna "bypass" (permintaan eksplisit):
+        // global = versi itu keluar dari tunnel (tanpa proteksi);
+        // per-app = versi itu dibuang di dalam tunnel.
+        sb.append("\n");
+        int bStart = sb.length();
+        sb.append("'Bypass' mode GLOBAL (IPv6/IPv4 saja) = versi itu "
+                + "KELUAR dari tunnel lewat jaringan langsung, tanpa "
+                + "proteksi VPN. 'BYPASS' per-app = versi itu DIBUANG "
+                + "di dalam tunnel.");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(
+                        getColor(R.color.glitch_white)), bStart, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // cy10.10: fail-closed BLOCK — eksplisit di legenda supaya
+        // perilaku saat atribusi gagal tidak mengejutkan.
+        sb.append("\n");
+        int fStart = sb.length();
+        sb.append("BLOCK fail-closed: bila pemilik koneksi tidak dapat "
+                + "ditentukan, paket versi yang diblok tetap DIBUANG.");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(
+                        getColor(R.color.glitch_white)), fStart, sb.length(),
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         legend.setText(sb);
         return legend;
@@ -1214,18 +1264,45 @@ public class MainActivity extends AppCompatActivity {
         // itu = mode IPv6 yang sudah ada (paksa koneksi IPv6); BYPASS v6
         // = mode IPv4. Desc singkat pada tiap item menjembatani penamaan
         // dgn label chip di row.
+        // cy10.10: (1) desc kini menyatakan EFEK NYATA (tolak versi itu
+        // DI DALAM tunnel — bukan keluar VPN); (2) item BYPASS v4/v6
+        // NONAKTIF (tak bisa dipilih + keterangan) saat mode global
+        // bukan Dual-stack — sebelumnya item tetap bisa dipilih tapi
+        // mode tidak ditegakkan (diabaikan diam-diam, permintaan
+        // eksplisit #3); (3) adaptif: label keterangan dibangun dari
+        // mode global yang tersimpan saat dialog dibuka.
+        final boolean gDual = "dual".equals(
+                getSharedPreferences("vpn", MODE_PRIVATE)
+                        .getString("vpn_ip_mode", "dual"));
+        final String offNote = gDual ? ""
+                : " \u2014 nonaktif: global non-dual";
         android.widget.Spinner bulkSp = new android.widget.Spinner(dialogCtx());
         String[] bulkItems = {
                 "Terapkan ke semua aplikasi...",
                 "GLOBAL \u2014 ikut mode global",
-                "BYPASS v4 \u2014 hanya via IPv6",
-                "BYPASS v6 \u2014 hanya via IPv4",
+                "BYPASS v4 \u2014 tolak IPv4 di tunnel, hanya via IPv6" + offNote,
+                "BYPASS v6 \u2014 tolak IPv6 di tunnel, hanya via IPv4" + offNote,
                 "BLOCK v4 \u2014 tolak IPv4, hanya v6",
                 "BLOCK v6 \u2014 tolak IPv6, hanya v4",
         };
         android.widget.ArrayAdapter<String> bulkAd =
-                new android.widget.ArrayAdapter<>(dialogCtx(),
-                        R.layout.spinner_item, bulkItems);
+                new android.widget.ArrayAdapter<String>(dialogCtx(),
+                        R.layout.spinner_item, bulkItems) {
+            // cy10.10: item nonaktif tak bisa dipilih (isEnabled false)
+            // + tampil redup (alpha 45%) — keterangan singkat ada di
+            // label itemnya sendiri. Jalur pemilihan juga diguard di
+            // onItemSelected (safety-net utk OEM yang tetap mengirim
+            // event utk item disabled).
+            @Override public boolean isEnabled(int pos) {
+                return !((pos == 2 || pos == 3) && !gDual);
+            }
+            @Override public android.view.View getDropDownView(int pos,
+                    android.view.View cv, android.view.ViewGroup parent) {
+                android.view.View v = super.getDropDownView(pos, cv, parent);
+                if ((pos == 2 || pos == 3) && !gDual) v.setAlpha(0.45f);
+                return v;
+            }
+        };
         bulkAd.setDropDownViewResource(R.layout.spinner_dropdown_item);
         bulkSp.setAdapter(bulkAd);
         bulkSp.setMinimumHeight((int) (48 * d)); // area sentuh >= 48dp
@@ -1236,6 +1313,12 @@ public class MainActivity extends AppCompatActivity {
             public void onItemSelected(android.widget.AdapterView<?> pa,
                     android.view.View vw, int ps, long id) {
                 if (ps <= 0) return; // placeholder / initial fire / reset
+                if ((ps == 2 || ps == 3) && !gDual) {
+                    // safety-net: item disabled tidak seharusnya terkirim;
+                    // kalau terkirim, jangan terapkan diam-diam.
+                    bulkSp.post(() -> bulkSp.setSelection(0));
+                    return;
+                }
                 // posisi -> nilai mode (BYPASS v4 -> "v6" dst, lihat
                 // komentar blok ini; string kosong = GLOBAL)
                 final String pick = ps == 1 ? "" : ps == 2 ? "v6"
@@ -1321,9 +1404,23 @@ public class MainActivity extends AppCompatActivity {
         final int[] washes = {R.color.chip_global_bg,
                 R.color.chip_v4_bg, R.color.chip_v6_bg,
                 R.color.chip_block4_bg, R.color.chip_block6_bg};
+        // cy10.10: BLOCK v4 = status_amber (coral vs red terlalu mirip
+        // pada titik 11px — sama dgn legenda & chip).
         final int[] dots = {R.color.m3_on_surface_variant,
                 R.color.m3_primary, R.color.m3_tertiary,
-                R.color.status_coral, R.color.status_red};
+                R.color.status_amber, R.color.status_red};
+        // cy10.10 (req #3): mode v4/v6 TIDAK ditegakkan saat mode global
+        // bukan Dual-stack (synAction hanya aktif saat dual) -> barisnya
+        // dinonaktifkan + keterangan singkat, bukan diabaikan diam-diam.
+        final boolean gDual = "dual".equals(
+                getSharedPreferences("vpn", MODE_PRIVATE)
+                        .getString("vpn_ip_mode", "dual"));
+        // cy10.10 (req #3): app yang di-bypass split tunnel tidak masuk
+        // TUN sama sekali -> SEMUA mode tidak berlaku (G1) — ditandai
+        // dgn baris keterangan di atas daftar, semua baris dinonaktifkan.
+        final String pkg = key.startsWith("vpn_app_ip_")
+                ? key.substring("vpn_app_ip_".length()) : "";
+        final boolean bypassed = !pkg.isEmpty() && isAppBypassed(pkg);
 
         // Ripple tema dialog utk baris NON-aktif (cyan 15% via
         // colorControlHighlight tema) - feedback fungsional, tetap jalan
@@ -1339,21 +1436,54 @@ public class MainActivity extends AppCompatActivity {
         int padV = (int) (4 * d);
         box.setPadding(padV, padV, padV, padV);
 
+        // cy10.10 (req #3): baris keterangan singkat di atas daftar bila
+        // ada ketidakberlakuan — pengguna tidak perlu menebak dari
+        // keadaan baris yang redup saja. (Split tunnel: G1; non-dual:
+        // synAction hanya aktif saat global dual.)
+        if (bypassed || !gDual) {
+            android.widget.TextView note =
+                    new android.widget.TextView(dialogCtx());
+            note.setTextSize(11);
+            note.setTypeface(android.graphics.Typeface.MONOSPACE);
+            note.setTextColor(getColor(R.color.m3_on_surface_variant));
+            note.setPadding((int) (16 * d), (int) (6 * d),
+                    (int) (12 * d), (int) (2 * d));
+            note.setText(bypassed
+                    ? "App ini di luar tunnel (split tunnel) \u2014 mode"
+                      + " tidak berlaku."
+                    : "Mode global non-dual \u2014 IPv4/IPv6 per-app"
+                      + " tidak ditegakkan.");
+            box.addView(note, new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
         for (int i = 0; i < modes.length; i++) {
             final int idx = i;
             final boolean active = modes[i].equals(cur);
+            // cy10.10 (req #3): baris tidak berlaku -> NONAKTIF (tak bisa
+            // dipilih, redup, desc diganti keterangan singkat) — bukan
+            // bisa dipilih lalu diabaikan diam-diam. v4/v6 tidak
+            // ditegakkan saat global non-dual; SEMUA mode tidak berlaku
+            // utk app yang di-bypass split tunnel.
+            final boolean rowOff = bypassed
+                    || (!gDual && (i == 1 || i == 2));
             android.widget.LinearLayout row =
                     new android.widget.LinearLayout(dialogCtx());
             row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             row.setMinimumHeight((int) (48 * d));
             row.setPadding((int) (16 * d), 0, (int) (12 * d), 0);
-            if (active) {
+            if (active && !rowOff) {
                 // Baris aktif: latar wash token chip mode itu + label
                 // warna mode (tanda "nilai sekarang" tanpa elemen baru).
                 row.setBackgroundColor(getColor(washes[i]));
-            } else if (tv2.resourceId != 0) {
+            } else if (!rowOff && tv2.resourceId != 0) {
                 row.setBackgroundResource(tv2.resourceId);
+            }
+            if (rowOff) {
+                row.setEnabled(false);
+                row.setAlpha(0.45f);
             }
             android.widget.TextView dot =
                     new android.widget.TextView(dialogCtx());
@@ -1372,7 +1502,11 @@ public class MainActivity extends AppCompatActivity {
                     : getColor(R.color.glitch_white));
             android.widget.TextView desc =
                     new android.widget.TextView(dialogCtx());
-            desc.setText(getString(descs[i]));
+            // cy10.10: baris nonaktif -> desc = keterangan singkat kenapa.
+            desc.setText(rowOff
+                    ? (bypassed ? "\u2014 di luar VPN (split tunnel)"
+                                : "\u2014 nonaktif: global non-dual")
+                    : getString(descs[i]));
             desc.setTextSize(11);
             desc.setTypeface(android.graphics.Typeface.MONOSPACE);
             desc.setSingleLine(true);
@@ -1386,7 +1520,7 @@ public class MainActivity extends AppCompatActivity {
             row.addView(dot);
             row.addView(label);
             row.addView(desc);
-            row.setOnClickListener(v -> {
+            if (!rowOff) row.setOnClickListener(v -> {
                 // State dipasang SEKETIKA (sebelum fx apa pun) - glitch
                 // hanya lapisan visual, tidak pernah menunda input.
                 String pick = modes[idx];
@@ -1466,7 +1600,10 @@ public class MainActivity extends AppCompatActivity {
         // cy10.7: cap ukur mengikuti jumlah baris (5 mode x 48dp + padding
         // box) - cap lama 200dp utk 3 baris membuat tinggi terukur lebih
         // kecil dari tinggi nyata popup -> posisi "di atas chip" salah.
-        int measureCap = (int) (modes.length * 48 * d + 16 * d);
+        // cy10.10: + baris keterangan nonaktif (bypassed/non-dual ~2 baris
+        // teks 11sp) agar ukuran tetap akurat saat catatan tampil.
+        int measureCap = (int) (modes.length * 48 * d + 16 * d
+                + ((bypassed || !gDual) ? 40 * d : 0));
         box.measure(
                 android.view.View.MeasureSpec.makeMeasureSpec(w,
                         android.view.View.MeasureSpec.EXACTLY),
@@ -2871,9 +3008,14 @@ public class MainActivity extends AppCompatActivity {
         vpnPickAppsBtn.setOnClickListener(vp -> showAppPicker());
         updateSplitTunnelUi(savedAppMode);
         // Mode IP global: dual / bypass IPv4 / bypass IPv6.
+        // cy10.10: label kini menyatakan EFEK NYATA "bypass" global:
+        // versi yang tidak dipilih KELUAR dari tunnel via jaringan
+        // langsung (tanpa proteksi VPN) — bukan dibuang, dan berbeda
+        // dari BYPASS per-app (= dibuang di tunnel; lihat legenda).
         vpnIpMode = findViewById(R.id.vpnIpMode);
         String[] ipModes = {"Dual-stack (IPv4 + IPv6)",
-                "IPv6 saja (bypass IPv4)", "IPv4 saja (bypass IPv6)"};
+                "IPv6 saja (IPv4 keluar tunnel)",
+                "IPv4 saja (IPv6 keluar tunnel)"};
         android.widget.ArrayAdapter<String> ipAd =
                 new android.widget.ArrayAdapter<>(this,
                         R.layout.spinner_item, ipModes);
@@ -2888,12 +3030,28 @@ public class MainActivity extends AppCompatActivity {
             public void onItemSelected(android.widget.AdapterView<?> pa,
                                        android.view.View vw, int ps, long id) {
                 String mk = ps == 1 ? "v6only" : ps == 2 ? "v4only" : "dual";
-                getSharedPreferences("vpn", MODE_PRIVATE).edit()
-                        .putString("vpn_ip_mode", mk).apply();
+                android.content.SharedPreferences vprefs =
+                        getSharedPreferences("vpn", MODE_PRIVATE);
+                String prev = vprefs.getString("vpn_ip_mode", "dual");
+                boolean changed = !mk.equals(prev);
+                vprefs.edit().putString("vpn_ip_mode", mk).apply();
                 // cy7: mode per IP global pindah = spinner + counter saja.
                 GlitchText.glitchView(vpnIpMode, GlitchText.MINOR);
                 GlitchText.glitchNow(vpnIpModeAppCount, GlitchText.MINOR);
                 updateVpnIpModeCount();
+                // cy10.10: mode global TIDAK live (route + verdict global
+                // ditetapkan saat establish — berlaku saat VPN start
+                // berikutnya). Sebelumnya diubah diam-diam tanpa kabar;
+                // kini diberi tahu saat VPN sedang jalan + nilai benar-benar
+                // berubah, termasuk dampak ke mode per-app IPv4/IPv6.
+                if (changed && VpnEngine.running) {
+                    int nApp = countAppIpModes();
+                    hud("Mode global berlaku saat VPN dinyalakan ulang"
+                            + (!mk.equals("dual") && nApp > 0
+                                ? " \u2014 " + nApp + " mode per-app"
+                                  + " IPv4/IPv6 akan nonaktif (non-dual)"
+                                : ""));
+                }
             }
             public void onNothingSelected(android.widget.AdapterView<?> pa) {}
         });

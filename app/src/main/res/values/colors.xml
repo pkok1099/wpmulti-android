@@ -99,10 +99,13 @@
     <!-- cy10.7 BLOCK v4/v6: keluarga warna baru (merah/oranye) utk mode
          blokir - diminta eksplisit user, jelas beda dari cyan (v4) dan
          magenta (v6). Turunan token status SEMANTIK yang sudah ada
-         (bukan hue baru): BLOCK v4 = status_coral (oranye-salmon),
-         BLOCK v6 = status_red (merah glitch). Wash 15% seperti chip
-         lain; label pakai warna penuh. -->
-    <color name="chip_block4_bg">#26FF8A80</color>
+         (bukan hue baru). cy10.10: BLOCK v4 = status_amber (acid
+         #D4FF3F) — coral (#FF8A80) vs red (#FF3355) hanya beda
+         kecerahan, terlalu mirip pada titik legenda 11px & label chip;
+         amber (kuning-hijau) vs red (merah) beda HUE penuh, tetap
+         token palet yang sama. Wash 15% seperti chip lain; label
+         pakai warna penuh. -->
+    <color name="chip_block4_bg">#26D4FF3F</color>
     <color name="chip_block6_bg">#26FF3355</color>
     <!-- Scrollbar & ripple cybercore: cyan 40% / 15%. -->
     <color name="scrollbar_thumb">#6622D3EE</color>

@@ -259,6 +259,93 @@ indikator tetap SATU view translationX/Y)**:
 
 **Commit**: cy10.9.
 
+### 10. Mode IP per aplikasi: audit cy10.10 + 4 perbaikan
+###    (fail-closed, embedded-v4, UDP/DNS mode paksa, UI nonaktif)
+
+Audit diminta user dgn permintaan eksplisit "laporkan file:baris,
+jangan menebak". Jawaban audit (nomor baris = kondisi PASCA-cy10.10;
+pra-perbaikan ada di git show cy10.7/cy10.8):
+
+**Q1 — di lapisan mana BLOCK diterapkan?** Bukan di proxy, bukan hanya
+DNS. TIGA lapisan di data plane TUN:
+- TCP: tolak SYN via RST "dari tujuan" — `handleTcp` VpnEngine.java
+  :1812-1823 (v4) & `handleTcp6` :1870-1882 (v6, family EFEKTIF);
+  keputusan di `verdictAction` :382-389 / `synAction` :362-370.
+- UDP non-DNS (termasuk QUIC): buang + ICMP unreachable — `handleUdp`
+  :1136-1152 (v4) & `handleUdp6` :1185-1207 (v6).
+- DNS UDP/53: jawab LOKAL NODATA utk qtype versi yang diblok —
+  `forwardDns` :1240-1278. Ini lapisan BANTU (mempercepat fallback);
+  penegakan sebenarnya tetap di paket — app dgn DNS sendiri (DoH)
+  tetap kena RST/unreach saat mencoba connect versi yang diblok.
+- Proxy SOCKS (`connectViaSocks` :1929+) TIDAK punya logika blok —
+  trafik terblok tidak pernah sampai ke sana (SYN sudah di-RST sebelum
+  TcpConn dibuat :1824).
+
+**Q2 — pemilik koneksi & UID tak ditemukan?** Atribusi via
+`ConnectivityManager.getConnectionOwnerUid` (conntrack netd, binder) —
+`flowOwner` :290-319 + `connOwnerUid` :1757-1768; lalu
+`getPackagesForUid` :310. Sesi ini: **fail-closed** — pemilik tak
+diketahui + family sedang diblok → paket DIBUANG (`verdictAction`
+:382-389; pra-cy10.7 :284 lama: fail-open "lebih baik lolos
+daripada putus"). minSdk 34 ≥ API 29 → risiko kegagalan sistematis
+kecil; drop tampil sbg "(unknown)" di statistik BLOCK[30s].
+
+**Q3 — arti persis "BYPASS"?** DUA makna berbeda (kini diperjelas di
+label + legenda, MainActivity.java :3013-3015 & :1139-1159):
+- GLOBAL "IPv6 saja": route TUN hanya ::/0 (VpnEngine :465-475) →
+  trafik IPv4 keluar dari tunnel via jaringan langsung — TANPA
+  proteksi VPN (bocor by design, itu memang fungsi mode ini).
+- Per-app "BYPASS v4": paket IPv4 app itu DIBUANG di dalam tunnel
+  (`synAction` mode 2 → aksi 1, :365) — TIDAK keluar VPN.
+
+**Q4 — mode berubah saat VPN aktif:** koneksi BARU langsung kena
+verdict baru (swap map volatile + reset cache — `applyLive` :679-706);
+koneksi LAMA yang bertentangan DIPUTUS di background (RST/ICMP —
+`cutConflictingFlows` :734-759, kini dari PEMILIK yang di-cache saat
+admit :1901/:2317 — tanpa lookup conntrack baru, G11 tertutup).
+Pengecualian tetap: G10 (family belum ditangkap route → LIVE_PARTIAL,
+HUD + log).
+
+**Q5 — kombinasi yang tidak berlaku:** (a) mode per-app v4/v6 + global
+non-dual → tidak ditegakkan (`synAction` :364-365 guard `dual`);
+(b) app yang di-bypass split-tunnel → semua mode tidak berlaku (G1);
+(c) mode global berubah saat VPN jalan → baru berlaku saat start
+berikutnya (route+verdict global fix saat establish). Semua kini
+DITANDAI di UI (lihat bawah), sebelumnya hanya catatan legenda umum.
+
+**Perbaikan yang diterapkan (cy10.10)**:
+1. **BLOCK fail-closed** (Q2): pemilik tak dikenal/error → paket
+   family yang diblok DIBUANG: SYN → RST (`verdictAction`), UDP →
+   unreach, DNS → NODATA (`forwardDns` killA/killAAAA :1251-1259).
+   Kunci: `blockV4Active/blockV6Active` :181-187 (volatile, ikut
+   live-swap :690-691).
+2. **Tutup celah embedded-v4**: tujuan ::ffff:0:0/96 & 64:ff9b::/96
+   dihitung family v4 utk verdict (`isV4EmbeddedV6` :399-411,
+   `effFamilyV6` :414-417) — dipakai di TCP/UDP/cut. IP literal
+   memang sudah tertutup (blok per-family di data plane, bukan
+   per-nama DNS). 6to4/Teredo tetap tidak dibedakan (lihat §8).
+3. **Mode paksa v4/v6 kini menyaring UDP+DNS** saat global dual
+   (QUIC, DoH-bawaan-app tidak bisa lewat UDP family lawan;
+   query A utk app "hanya via IPv6" dijawab NODATA) — konsisten
+   dgn label "hanya via X". Perilaku lama (hanya TCP SYN) membuat
+   label setengah benar.
+4. **UI menandai yang tidak berlaku** (MainActivity): baris v4/v6
+   di popup per-app DINONAKTIFKAN + keterangan bila global non-dual
+   (:1436-1456, :1461-1484, :1503-1506); app bypass split-tunnel →
+   semua baris nonaktif + catatan; item BYPASS di dropdown massal
+   tak bisa dipilih (adapter isEnabled :1288-1301); ubah mode global
+   saat VPN jalan → HUD "berlaku saat VPN dinyalakan ulang" + dampak
+   ke mode per-app (:3039-3051). Label "BYPASS" diperjelas + warna
+   legenda BLOCK v4 = status_amber (coral vs red terlalu mirip).
+
+**Verifikasi**: mirror Python logika verdict
+(`scripts/sim_ipmode_failclosed.py`) — 40+ kasus: block+embedded,
+fail-closed per family, mode paksa UDP/DNS, cut-by-cache, shared-UID
+precedence — semua lolos. Build device belum bisa dijalankan di
+sandbox (tanpa Android SDK) — checklist C.6 baru di bawah.
+
+**Commit**: cy10.10.
+
 ## B. Item menunggu konfirmasi user (K1–K7, dari audit cy10.2)
 
 | # | Temuan | Mengapa belum diubah | Kalau dijalankan |
@@ -314,11 +401,11 @@ jujur, TIDAK diklaim "tidak ada kebocoran":
 | G4 | Mode DNS DoH/DoQ: family upstream mengikuti dnsTarget | Query versi-diizinkan milik app BLOCK bisa menumpang versi-diblok di socket MILIK PROSES VPN | DoH ber-URL/hostname: memaksa family = koneksi terpisah per family + kontrol resolusi di luar jangkauan HttpsURLConnection; remap hanya diimplementasikan utk plain & DoT literal |
 | G5 | Resolver custom v4/v6-only tanpa counterpart di tabel | Sama seperti G4: fallback ke upstream family asli | Tidak ada cara mengetahui alamat v6 resolver pilihan user; menebak resolver lain = mengubah jawaban DNS |
 | G6 | Jendela VPN mati (stop biasa, revocation, gap sebelum auto-reconnect) | SEMUA trafik kedua versi lewat jaringan langsung | Sifat VPN off; kill switch yang ada (broadcast, notifikasi, reconnect 3x) meminimalkan durasi |
-| G7 | connOwnerUid fail-open | Paket versi diblok lolos bila uid tidak dikenal (race conntrack yang sangat jarang, kegagalan binder) | Prinsip lama proyek: putus total lebih buruk daripada lolos sesaat; volume normal: lookup berhasil deterministik |
+| G7 | ~~connOwnerUid fail-open~~ **TERTUTUP cy10.10** | Pemilik tak dikenal utk family yang diblok kini DIBUANG (fail-closed): SYN → RST, UDP → ICMP unreach, DNS → NODATA; dihitung sbg "(unknown)" di statistik BLOCK[30s] | Permintaan eksplisit user membalik kebijakan lama ("putus total lebih buruk"→"blok tidak boleh bocor gara-gara atribusi meleset"); minSdk 34 → API selalu tersedia |
 | G8 | Auto dual-capture mengubah jalur app lain | Global v6only/v4only + ada app BLOCK → versi "bypass" app lain kini ikut tunnel (bukan direct) | Route per-TUN bersifat global; menangkap versi utk SATU app = menangkap utk semua. Dilaporkan eksplisit di log start BLOCK |
 | G9 | UDP one-shot dgn port sumber baru per paket | Cache verdict miss → lookup per paket (beban CPU, bukan bocor) | Perilaku app; lookup tetap benar hanya lebih mahal |
 | G10 | Live-apply mode BLOCK saat global non-dual DAN TUN tidak menangkap family yang diblok (BLOCK baru pertama kali utk family itu, tanpa restart) | Verdict/SYN/UDP/DNS baru sudah ditegakkan, tetapi paket versi itu TIDAK PERNAH masuk TUN → tidak bisa ditolak; koneksi lama versi itu sudah diputus | Route VpnService ditetapkan saat establish dan tidak ada API utk mengubahnya pada sesi jalan; re-establish in-place menciptakan jendela gap route (= bocor sesaat — lebih buruk). UI memberi tahu via HUD "restart VPN utk penegakan penuh" + log; restart berikutnya otomatis dual-capture |
-| G11 | Live-apply memutus koneksi lama yang bertentangan; atribusi conntrack UDP bisa kedaluwarsa utk flow one-shot | Flow UDP lama app yang baru di-BLOCK bisa tetap hidup sampai idle-timeout (<=60 dtk) atau paket berikutnya | getConnectionOwnerUid hanya melihat entri conntrack yang masih ada; fail-open dipilih (memutus flow app lain yang salah = lebih buruk). TCP tidak terkena (conntrack ESTABLISHED stabil) |
+| G11 | ~~Atribusi conntrack UDP bisa kedaluwarsa saat live-apply~~ **TERTUTUP cy10.10** | cutConflictingFlows kini memakai PEMILIK yang di-CACHE saat flow di-admit (TcpConn.owner/UdpFlow.owner) — tanpa lookup conntrack baru; flow app yang baru di-BLOCK pasti terpotong; pemilik tak dikenal diputus fail-closed bila family-nya kini diblok | Cache disimpan saat admit (lookup conntrack hampir selalu berhasil di situ); mode dihitung ulang dari daftar paket UID yang di-cache terhadap map terbaru |
 
 Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
 - Query DNS app BLOCK ke server versi yang diblok TETAP dijawab lokal
@@ -392,3 +479,42 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
      aktif kembali + counter jumlah app; perubahan daftar tetap
      berlaku saat connect berikutnya (bukan live — by design);
    - search/keyboard/checkbox/glitch di kedua dialog tak berubah.
+
+### C.6. Checklist device cy10.10 (fail-closed BLOCK + embedded-v4 +
+###     UI nonaktif)
+
+8. **BLOCK fail-closed** (butuh device + jaringan dual-stack):
+   - VPN aktif + satu app di-BLOCK (mis. browser) → pastikan app LAIN
+     tetap bisa konek normal (lookup berhasil normal — jalur
+     fail-closed tidak menyala utk family tanpa blok);
+   - kill app uji paksa (adb shell am force-stop) saat koneksi
+     setengah → koneksi TUA app itu tetap diputus saat di-BLOCK live
+     (verdict dari cache pemilik, bukan conntrack);
+   - logView: drop pemilik-tak-dikenal tampil sbg
+     `BLOCK[30s] (unknown): drop v4=…` (jarang; hanya saat atribusi
+     benar-benar gagal).
+9. **Embedded-v4 / NAT64** (jaringan v6-only dgn DNS64, atau uji
+   manual dgn URL `http://[64:ff9b:d00:d00::1]/` bila jaringan
+   punya NAT64):
+   - app BLOCK v4 tidak bisa mencapai IPv4 lewat alamat ter-embed
+     (RST/unreach), sementara IPv6 native tetap jalan;
+   - app mode "IPv6" (paksa) juga memperlakukan tujuan ter-embed v4
+     sbg v4 (tidak lolos sbg "v6").
+10. **Mode paksa v4/v6 kini menutup UDP+DNS** (global Dual):
+   - app "hanya via IPv6" + situs ber-QUIC v4 → QUIC v4 tidak lolos
+     (fallback cepat, bukan menggantung); query A app itu dijawab
+     NODATA (logView: `dns NODATA=`);
+   - HARUS TIDAK ada regresi: app tanpa mode sama sekali tidak
+     tersentuh (tanpa lookup tambahan saat list mode kosong).
+11. **UI penanda nonaktif**:
+   - global "IPv6 saja" → buka popup mode per-app: baris IPv4/IPv6
+     REDUP + desc "— nonaktif: global non-dual" + catatan di atas
+     daftar; item BYPASS di dropdown massal tak bisa dipilih;
+   - split tunnel "Kecuali yang dipilih" + app di dalam daftar kecuali
+     → popup per-app app itu: SEMUA baris redup + catatan "App ini di
+     luar tunnel (split tunnel)";
+   - ubah mode global saat VPN jalan → HUD "Mode global berlaku saat
+     VPN dinyalakan ulang — N mode per-app IPv4/IPv6 akan nonaktif";
+   - legenda: titik BLOCK v4 kini kuning-hijau (acid), terbedakan
+     jelas dari merah BLOCK v6; ada baris penjelas dua makna
+     "bypass" + baris fail-closed.
