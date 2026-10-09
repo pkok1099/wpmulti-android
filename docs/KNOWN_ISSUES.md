@@ -184,6 +184,81 @@ Rantai framework (diverifikasi langsung ke source AOSP):
 - Rombak UI besar = cold-start smoke test (buka app SEKALI) sebelum
   push/APK dibagikan — bug ini deterministik, tertangkap <1 detik.
 
+### 9. Navbar pill: indikator aktif "agak miring" (cy10.7 → cy10.9)
+**Gejala**: indikator capsule item aktif terlihat miring / melorot ke
+bawah — bukan diagonal harfiah (tidak ada kode rotation/skew di seluruh
+proyek), melainkan komposisi vertikal yang salah mata: capsule 64×32dp
+terlihat seperti "band" yang memotong bagian ATAS ikon dan bagian BAWAH
+label, dengan celah asimetris; setelah tap cepat beruntun, ikon+label
+item bisa bergeser beberapa piksel dari slotnya (indikator tetap di
+slot → tampak miring relatif terhadap isinya).
+
+**Akar (tiga, saling menumpuk — diverifikasi lewat replika aritmetika
+layout persis termasuk pembulatan `(int)`/integer-division Android)**:
+1. **Salah jangkar vertikal (regresi cy10.7)**: fix cy10.7 untuk "pill
+   sedikit lebih rendah" mengubah jangkar indikator dari ikon ke **pusat
+   blok ikon+label** (= pusat item; `row.getTop + item.getTop +
+   item.getHeight/2`). Ikon ada di ATAS blok → pusat item tertarik
+   ±(gap+label)/2 ≈ 8dp di BAWAH pusat ikon → capsule 32dp jatuh terlalu
+   rendah: tepi atasnya memotong atas ikon (±2dp keluar), tepi bawahnya
+   memotong label. Pra-cy10.7 jangkarnya sudah benar (ikon) tetapi
+   dihitung dari ASUMSI `padTop + ikon/2` yang meleset 1–2px saat
+   ITEM_MIN clamp/pembulatan — cy10.7 memperbaiki 1–2px itu dengan
+   mengorbankan jangkar 8dp-nya.
+2. **Bias 1px permanen (slack ganjil)**: kolom ikon+label dipusatkan di
+   item lewat `Gravity.CENTER` FrameLayout = **integer division**.
+   Slack vertikal = `(int)37dp − (int)20dp − (int)3dp`; pada density
+   ganjil-kuarter (2.5/1.5/…) = 35px (GANJIL) → blok duduk 1px lebih
+   TINGGI dari pusat → jarak ikon→tepi atas pill ≠ label→tepi bawah.
+3. **Drift jitter permanen (`GlitchText.glitchJitter`)**: baseline
+   `ox = v.getTranslationX()` ditangkap saat panggilan; jika rantai
+   jitter KEDUA dimulai saat rantai pertama masih berjalan (tekan item /
+   pindah tab beruntun < ~150ms — persis pola pemakaian navbar),
+   `ox` = posisi MID-FLIGHT (bukan 0) dan langkah pemulihan rantai kedua
+   menetapkan offset basi itu PERMANEN (tidak pernah dikoreksi siapa
+   pun: item tidak pernah kena efek alpha → BASE tidak pernah terisi).
+   Ikon+label bergeser 1–3px; indikator (getLeft, tak terpengaruh
+   translationX) tetap → tak lagi konsentris.
+4. **Tepi sub-piksel**: target translationX/Y menghasilkan koordinat
+   pecahan (.5px) pada beberapa density → kedua tepi capsule
+   ter-antialias 50% — terbaca "kurang tajam/miring" walau posisinya
+   benar.
+
+**Fix (cy10.9 — kontrak cy10.4 tetap: tanpa elevation/layer/bitmap,
+indikator tetap SATU view translationX/Y)**:
+- Jangkar vertikal = **pusat IKON dari posisi layout NYATA** rantai
+  penuh `row.getTop + item.getTop + col.getTop + icon.getTop +
+  icon.getHeight/2` — imun clamp/pembulatan (menutup akar lama
+  1–2px SEKALIGUS regresi jangkar); ikon 20dp masuk penuh dalam capsule
+  32dp (ruang simetris 6dp atas/bawah), label di bawah di luar capsule
+  (bahasa M3 asli; kontrak cy10.4 "indikator di belakang ikon").
+- `itemH` dipaksa slack GENAP terhadap kolom (+1px bila ganjil — tak
+  terlihat) → blok konten terpusat persis di semua density/fontScale.
+- `indicatorTargetX`/`translationY` dibulatkan `Math.round` → tepi
+  capsule tajam simetris (deviasi ≤0.5px tak terlihat).
+- `glitchJitter`: baseline translationX kini disimpan di registry
+  `JBASE` (WeakHashMap) saat rantai PERTAMA dimulai dan dipakai ulang
+  rantai-rantai tumpang tindih berikutnya; dipulihkan & dibersihkan di
+  langkah akhir / `cancelFor` / `restoreAllBase`. API beku cy7/cy8 tidak
+  berubah; amplitudo/timing/urutan langkah (visual) identik.
+
+**Pencegahan (aturan permanen)**:
+- Indikator nav = jangkar KOMPONEN VISUAL yang dibungkusnya (ikon), bukan
+  pusat kontainer item — pusat kontainer hanya kebetulan sama bila item
+  berisi SATU hal yang seimbang.
+- Posisi turunan dihitung dari RANTAI POSISI NYATA hasil layout
+  (`getTop()` berantai), bukan asumsi padding/token — keduanya harus
+  dibaca bersama: jangkar benar + asumsi = masih meleset; jangkar salah
+  + ukuran nyata = meleset lebih besar (regresi cy10.7).
+- Efek transform apa pun yang punya "pemulihan ke awal" WAJIB menyimpan
+  baseline di registry saat EFEK PERTAMA (bukan membaca ulang posisi
+  saat efek berikutnya mulai) — rantai tumpang tindih adalah normal di
+  UI yang responsif.
+- Pembagian tengah framework = integer division: slack ganjil = bias
+  1px — paksa genap bila simetri terlihat.
+
+**Commit**: cy10.9.
+
 ## B. Item menunggu konfirmasi user (K1–K7, dari audit cy10.2)
 
 | # | Temuan | Mengapa belum diubah | Kalau dijalankan |
@@ -283,9 +358,13 @@ Desain yang DELIBERAT (bukan celah, dicatat agar tidak dianggap bug):
      halaman tetap termuat via v6 (AAAA) tanpa delay panjang;
    - app dengan DoH bawaan (Firefox) + BLOCK v4: browsing tetap jalan
      via v6; percobaan v4 gagal cepat (tidak menggantung).
-5. **Navbar pill (fix cy10.7)**: indikator aktif terpusat vertikal
-   terhadap blok ikon+label (bukan miring ke bawah); jarak konten ke
-   lengkungan kiri = ke kanan; tetap tanpa kotak/label terpotong.
+5. **Navbar pill (fix cy10.9)**: indikator aktif terpusat VERTIKAL pada
+   IKON (ikon masuk penuh dalam capsule, ruang simetris atas/bawah;
+   label di bawah di luar capsule) — bukan lagi "band" yang memotong
+   atas ikon & bawah label; jarak konten ke lengkungan kiri = ke kanan;
+   tepi capsule tajam (piksel penuh); setelah TAP CEPAT beruntun
+   (<150ms antar tap) ikon+label tetap di slotnya (tidak bergeser
+   permanen); tetap tanpa kotak/label terpotong.
 6. **Dropdown massal + live apply (cy10.8)** — dialog "Mode IP per
    aplikasi" saat VPN AKTIF:
    - dropdown "Terapkan ke semua aplikasi..." di paling atas (di atas

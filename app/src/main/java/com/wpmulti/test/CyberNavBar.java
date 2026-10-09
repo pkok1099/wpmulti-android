@@ -81,13 +81,17 @@ public class CyberNavBar extends FrameLayout {
     private static final int IND_H_DP = 32;
     private static final long IND_ANIM_MS = 240;    // gerakan indikator
 
-    /** Satu item navbar: id + view item + label. */
+    /** Satu item navbar: id + view item + kolom ikon+label + ikon + label. */
     private static final class Item {
         final int id;
         final FrameLayout view;
+        final LinearLayout col;   // cy10.9: jangkar posisi ikon (lihat onLayout)
+        final ImageView icon;     // cy10.9: pusat vertikal indikator = pusat ikon
         final TextView label;
-        Item(int id, FrameLayout view, TextView label) {
-            this.id = id; this.view = view; this.label = label;
+        Item(int id, FrameLayout view, LinearLayout col, ImageView icon,
+                TextView label) {
+            this.id = id; this.view = view; this.col = col; this.icon = icon;
+            this.label = label;
         }
     }
 
@@ -199,9 +203,19 @@ public class CyberNavBar extends FrameLayout {
         }
         float dp = getResources().getDisplayMetrics().density;
         int iconPx = (int) (ICON_DP * dp);
+        int gapPx = (int) (GAP_DP * dp);
         int itemH = (int) ((ITEM_PAD_TOP_DP + ICON_DP + GAP_DP
                 + ITEM_PAD_BOTTOM_DP) * dp) + labelH;
         itemH = Math.max(itemH, (int) (ITEM_MIN * dp));
+        // cy10.9 (fix sisa "agak miring" - bias 1px): kolom ikon+label
+        // dipusatkan di item lewat Gravity.CENTER FrameLayout yang membagi
+        // slack dgn INTEGER DIVISION; slack GANJIL (mis. density 2.5/1.5:
+        // (int)37dp - ikon - gap = 35px) menaruh blok 1px lebih TINGGI dari
+        // pusat -> jarak ikon-tepi-atas-pill != jarak label-tepi-bawah-pill.
+        // +1px pada itemH (tak terlihat) menjamin slack GENAP = terpusat
+        // persis di semua density/fontScale.
+        int colH = iconPx + gapPx + labelH;
+        if ((itemH - colH) % 2 != 0) itemH++;
         int padSidePx = (int) (ITEM_PAD_SIDE_DP * dp);
         int contentW = Math.max(iconPx, labelW) + 2 * padSidePx;
         int itemW = Math.max(contentW, (int) (ITEM_MIN * dp));
@@ -243,8 +257,7 @@ public class CyberNavBar extends FrameLayout {
             LinearLayout col = new LinearLayout(getContext());
             col.setOrientation(LinearLayout.VERTICAL);
             col.setGravity(Gravity.CENTER_HORIZONTAL);
-            col.setPadding((int) (ITEM_PAD_SIDE_DP * dp), 0,
-                    (int) (ITEM_PAD_SIDE_DP * dp), 0);
+            col.setPadding(padSidePx, 0, padSidePx, 0);
             item.addView(col, new FrameLayout.LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
                     Gravity.CENTER));
@@ -285,7 +298,7 @@ public class CyberNavBar extends FrameLayout {
             item.setFocusable(true);
 
             row.addView(item);
-            items.add(new Item(id, item, label));
+            items.add(new Item(id, item, col, icon, label));
         }
 
         // Daftarkan label ke registry glitch SEKALI di sini (tidak ada
@@ -351,12 +364,15 @@ public class CyberNavBar extends FrameLayout {
 
     // ---------------- indikator ----------------
 
-    /** X target indikator (koordinat CyberNavBar) utk item terpilih. */
+    /** X target indikator (koordinat CyberNavBar) utk item terpilih.
+     * cy10.9: Math.round -> tepi kiri/kanan capsule jatuh di piksel penuh
+     * (posisi sub-piksel membuat KEDUA tepi AA-soft; deviasi <= 0.5px
+     * dari pusat tak terlihat, tepi kabur TERLIHAT). */
     private float indicatorTargetX() {
         Item it = findItem(selectedId);
         if (it == null) return row.getLeft();
-        return row.getLeft() + it.view.getLeft()
-                + (it.view.getWidth() - indicator.getWidth()) / 2f;
+        return Math.round(row.getLeft() + it.view.getLeft()
+                + (it.view.getWidth() - indicator.getWidth()) / 2f);
     }
 
     private void moveIndicator(boolean animate) {
@@ -424,23 +440,37 @@ public class CyberNavBar extends FrameLayout {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
-        // Posisi vertikal indikator (cy10.7): dipusatkan terhadap BLOK
-        // IKON+LABEL (= pusat vertikal item — kolom ikon+label memang
-        // Gravity.CENTER di dalam item), dihitung dari UKURAN NYATA hasil
-        // layout (row.getTop/item.getTop/item.getHeight), bukan dari
-        // asumsi padding/font: rumus lama memusatkan ke ikon dgn offset
-        // padTop+ikon/2 yang bisa meleset 1-2px saat ITEM_MIN meng-clamp
-        // atau truncation (int) pembulatan — sumber "pill sedikit lebih
-        // rendah". translationY murni — tidak memicu re-layout, sama
-        // seperti translationX horizontal.
+        // Posisi vertikal indikator (cy10.9): dipusatkan pada IKON — pusat
+        // NYATA hasil layout (row.getTop + item.getTop + col.getTop +
+        // icon.getTop + icon.getHeight/2), rantai posisi penuh tanpa
+        // asumsi padding/font (imun clamp ITEM_MIN & pembulatan int).
+        //
+        // cy10.7 SALAH JANGKAR: "terpusat vertikal terhadap blok ikon+label"
+        // = pusat ITEM, padahal ikon ada di ATAS blok → capsule 32dp
+        // tertarik ±8dp LEBIH RENDAH dari ikon: tepi atasnya memotong
+        // bagian atas ikon & tepi bawahnya memotong label → indikator
+        // tampak "agak miring / melorot ke bawah". Jangkar benar = IKON
+        // (bahasa M3 asli, kontrak cy10.4 "indikator di belakang ikon"):
+        // ikon 20dp masuk penuh dalam capsule (ruang 6dp atas & bawah),
+        // label di bawahnya di luar capsule. Rumus pra-cy10.7 memang sudah
+        // ke ikon tapi dari ASUMSI padTop+ikon/2 yang bisa meleset 1-2px
+        // saat ITEM_MIN meng-clamp / truncation (int) (sumber "pill
+        // sedikit lebih rendah"); kini dibaca dari layout nyata sehingga
+        // kedua masalah sekaligus tertutup. translationY murni — tidak
+        // memicu re-layout, sama seperti translationX horizontal.
         if (indicator.getHeight() > 0 && !items.isEmpty()) {
             Item ref = findItem(selectedId);
             if (ref == null) ref = items.get(0);
-            float contentCenterY = row.getTop() + ref.view.getTop()
-                    + ref.view.getHeight() / 2f;
-            float ty = contentCenterY - indicator.getHeight() / 2f
+            float iconCenterY = row.getTop() + ref.view.getTop()
+                    + ref.col.getTop() + ref.icon.getTop()
+                    + ref.icon.getHeight() / 2f;
+            float ty = iconCenterY - indicator.getHeight() / 2f
                     - indicator.getTop();
-            indicator.setTranslationY(Math.max(-indicator.getTop(), ty));
+            // Bulatkan ke piksel penuh (sama seperti indicatorTargetX):
+            // tepi capsule tajam & simetris — offset sub-piksel membuat
+            // tepi atas/bawah ter-AA tak sama kuat, terbaca "miring".
+            indicator.setTranslationY(
+                    Math.round(Math.max(-indicator.getTop(), ty)));
         }
         indicatorLaid = true;
         // Snap tanpa animasi: layout pertama / rotasi / rebuild — state

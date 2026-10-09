@@ -4,6 +4,42 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.9] — 2026-10-09
+
+### Fixed
+- **Navbar pill: indikator aktif "agak miring"** — tiga akar sekaligus
+  (semuanya vertikal/horizontal presisi, tanpa mengubah kontrak cy10.4:
+  tanpa elevation/layer/bitmap, indikator tetap SATU view translationX/Y):
+  1. **Salah jangkar vertikal (cy10.7 regresi)**: rumus cy10.7 memusatkan
+     indikator ke pusat BLOK ikon+label (= pusat item) — padahal ikon ada
+     di atas blok, sehingga capsule 32dp tertarik ±8dp lebih rendah dari
+     ikon: tepi atasnya memotong bagian atas ikon & tepi bawahnya memotong
+     label → tampak melorot/miring. Kini dipusatkan pada **pusat IKON**
+     dari posisi layout NYATA (rantai row→item→col→ikon, tanpa asumsi
+     padding/font — imun clamp ITEM_MIN & pembulatan; menutup sekaligus
+     akar lama "pill sedikit lebih rendah" yang dulu dijawab asumsi
+     padTop+ikon/2). Bahasa visual M3 asli: ikon 20dp masuk penuh dalam
+     capsule (ruang 6dp atas/bawah), label di bawah di luar capsule.
+  2. **Bias 1px konten (slack ganjil)**: Gravity.CENTER FrameLayout
+     membagi slack vertikal dengan integer division; slack ganjil (density
+     2.5/1.5 dst.) menaruh blok ikon+label 1px lebih tinggi dari pusat —
+     jarak ikon-tepi-atas-pill ≠ label-tepi-bawah-pill. itemH kini
+     dipaksa slack GENAP (+1px bila perlu, tak terlihat).
+  3. **Tepi sub-piksel**: translationX/Y target dibulatkan ke piksel
+     penuh (Math.round) — offset sub-piksel membuat tepi capsule
+     ter-antialias tak sama kuat atas/bawah/kiri/kanan, terbaca "miring";
+     deviasi ≤0.5px dari pusat tak terlihat.
+- **GlitchText.glitchJitter: drift permanen saat rantai tumpang tindih**
+  (terlihat di navbar sebagai ikon+label bergeser dari slotnya sedangkan
+  indikator tetap → "miring" setelah tap cepat / pindah tab beruntun <
+  ~150ms): rantai kedua menangkap translationX MID-FLIGHT sebagai
+  "posisi awal" dan pemulihannya menetapkan offset basi selamanya. Kini
+  baseline translationX disimpan di registry `JBASE` saat rantai pertama
+  dimulai dan dipakai ulang seluruh rantai berikutnya pada view yang sama;
+  dipulihkan & dibersihkan oleh langkah akhir / `cancelFor` / `stop`.
+  API beku (cy7/cy8) tidak berubah — perbaikan internal murni; visual
+  efek identik (amplitudo/timing/urutan langkah sama).
+
 ## [cy10.8] — 2026-10-09
 
 ### Added
