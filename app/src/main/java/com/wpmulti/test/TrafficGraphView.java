@@ -39,6 +39,10 @@ public class TrafficGraphView extends View {
     private final Paint textPaint = new Paint();
     private final float d; // faktor densitas untuk ukuran dp -> px
 
+    // Cache string format untuk hindari alokasi di onDraw
+    private long mCachedRx = -1, mCachedTx = -1, mCachedMax = -1;
+    private String mCachedRxTxt, mCachedTxTxt, mCachedPeakTxt;
+
     public TrafficGraphView(Context ctx) {
         super(ctx);
         d = getResources().getDisplayMetrics().density;
@@ -140,6 +144,12 @@ public class TrafficGraphView extends View {
     public synchronized void clear() {
         count = 0;
         mVaries = false;
+        mCachedRx = -1;
+        mCachedTx = -1;
+        mCachedMax = -1;
+        mCachedRxTxt = null;
+        mCachedTxTxt = null;
+        mCachedPeakTxt = null;
         postInvalidate();
     }
 
@@ -167,10 +177,25 @@ public class TrafficGraphView extends View {
         // Legend SATU baris horizontal: bullet RX + teks, bullet TX + teks.
         // Kalau muat, legend memuat rate terkini; kalau tidak (layar
         // sempit / rate panjang), cukup label RX/TX agar tidak bertumpuk.
+        long lastRx = rx[count - 1];
+        long lastTx = tx[count - 1];
+        if (lastRx != mCachedRx || mCachedRxTxt == null) {
+            mCachedRx = lastRx;
+            mCachedRxTxt = "RX " + fmtRate(lastRx) + "/s";
+        }
+        if (lastTx != mCachedTx || mCachedTxTxt == null) {
+            mCachedTx = lastTx;
+            mCachedTxTxt = "TX " + fmtRate(lastTx) + "/s";
+        }
+        if (max != mCachedMax || mCachedPeakTxt == null) {
+            mCachedMax = max;
+            mCachedPeakTxt = "puncak " + fmtRate(max) + "/s";
+        }
+
         float dotR = 3 * d;
         float gap = 5 * d;
-        String rxTxt = "RX " + fmtRate(rx[count - 1]) + "/s";
-        String txTxt = "TX " + fmtRate(tx[count - 1]) + "/s";
+        String rxTxt = mCachedRxTxt;
+        String txTxt = mCachedTxTxt;
         float legendW = dotR * 2 + gap + textPaint.measureText(rxTxt)
                 + gap + dotR * 2 + gap + textPaint.measureText(txTxt);
         if (legendW > w - 2 * pad) {
@@ -186,7 +211,7 @@ public class TrafficGraphView extends View {
         cur += dotR * 2 + gap;
         c.drawText(txTxt, cur, baseline, textPaint);
         // Label puncak di kanan-bawah (dulu kiri-atas, menabrak legend).
-        String peak = "puncak " + fmtRate(max) + "/s";
+        String peak = mCachedPeakTxt;
         c.drawText(peak, w - pad - textPaint.measureText(peak),
                 h - pad, textPaint);
         float dx = (float) w / (CAP - 1);
