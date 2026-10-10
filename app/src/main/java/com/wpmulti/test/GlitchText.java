@@ -197,6 +197,10 @@ public final class GlitchText {
     // pick IDENTIK (iterasi NODES yang sama).
     private static final ArrayList<Node> SCRATCH_ALIVE = new ArrayList<>();
     private static final ArrayList<Node> SCRATCH_HOT = new ArrayList<>();
+    private static final ArrayList<TextView> SCRATCH_PENDING_KEYS = new ArrayList<>();
+    private static final ArrayList<CharSequence> SCRATCH_PENDING_VALS = new ArrayList<>();
+    private static final ArrayList<TextView> SCRATCH_SHADOW_KEYS = new ArrayList<>();
+    private static final ArrayList<Node> SCRATCH_SHADOW_VALS = new ArrayList<>();
     /** TextView yang sedang kilat span -> teks dasar utk restore. */
     private static final IdentityHashMap<TextView, CharSequence> PENDING =
             new IdentityHashMap<>();
@@ -450,13 +454,19 @@ public final class GlitchText {
         if (v.getElevation() > 0f) v.setElevation(0f);
     }
 
-    /** Batalkan SEMUA langkah tertunda satu view + pulihkan baseline. */
-    public static void cancelFor(View v) {
+    /** Batalkan runnable tertunda utk view v TANPA mereset BASE/JBASE. */
+    private static void cancelPendingSteps(View v) {
         if (v == null) return;
         ArrayList<Runnable> list = POSTED.remove(v);
         if (list != null) {
             for (Runnable r : list) H.removeCallbacks(r);
         }
+    }
+
+    /** Batalkan SEMUA langkah tertunda satu view + pulihkan baseline. */
+    public static void cancelFor(View v) {
+        if (v == null) return;
+        cancelPendingSteps(v);
         float[] b = BASE.remove(v);
         if (b != null) {
             v.setAlpha(b[0]);
@@ -570,6 +580,7 @@ public final class GlitchText {
     public static void glitchView(View v, int level) {
         if (v == null || !isGlitchEnabled()) return;
         markEvent();
+        cancelPendingSteps(v);
         v.animate().cancel();
         guardElevation(v);
         long t = 0;
@@ -609,6 +620,7 @@ public final class GlitchText {
     public static void glitchJitter(View v, int level) {
         if (v == null || !isGlitchEnabled()) return;
         markEvent();
+        cancelPendingSteps(v);
         float d = DENSITY;
         float amp = level == MAJOR ? 3.5f : level == MEDIUM ? 2f : 1f;
         final float ox;
@@ -648,6 +660,7 @@ public final class GlitchText {
     public static void glitchAppear(View v) {
         if (v == null || !isGlitchEnabled()) return;
         markEvent();
+        cancelPendingSteps(v);
         glitchTree(v, MEDIUM);
         v.animate().cancel();
         guardElevation(v);
@@ -669,6 +682,7 @@ public final class GlitchText {
     public static void glitchDisappear(View v) {
         if (v == null || !isGlitchEnabled()) return;
         markEvent();
+        cancelPendingSteps(v);
         glitchTree(v, MINOR);
         v.animate().cancel();
         guardElevation(v);
@@ -1439,12 +1453,16 @@ public final class GlitchText {
 
     private static void restoreNow() {
         if (!PENDING.isEmpty()) {
-            for (Iterator<Map.Entry<TextView, CharSequence>> it =
-                    PENDING.entrySet().iterator(); it.hasNext();) {
-                Map.Entry<TextView, CharSequence> e = it.next();
-                TextView tv = e.getKey();
-                CharSequence base = e.getValue();
-                it.remove();
+            SCRATCH_PENDING_KEYS.clear();
+            SCRATCH_PENDING_VALS.clear();
+            for (Map.Entry<TextView, CharSequence> e : PENDING.entrySet()) {
+                SCRATCH_PENDING_KEYS.add(e.getKey());
+                SCRATCH_PENDING_VALS.add(e.getValue());
+            }
+            PENDING.clear();
+            for (int i = 0; i < SCRATCH_PENDING_KEYS.size(); i++) {
+                TextView tv = SCRATCH_PENDING_KEYS.get(i);
+                CharSequence base = SCRATCH_PENDING_VALS.get(i);
                 if (tv == null) continue;
                 // Guard teks dinamis: hanya pulihkan bila karakternya
                 // masih persis teks dasar (kilatan tidak mengubah char).
@@ -1454,16 +1472,21 @@ public final class GlitchText {
                     sApplying = false;
                 }
             }
+            SCRATCH_PENDING_KEYS.clear();
+            SCRATCH_PENDING_VALS.clear();
         }
         if (!SHADOWED.isEmpty()) {
-            for (Iterator<Map.Entry<TextView, Node>> it =
-                    SHADOWED.entrySet().iterator(); it.hasNext();) {
-                Map.Entry<TextView, Node> e = it.next();
-                TextView tv = e.getKey();
-                Node n = e.getValue();
-                it.remove();
+            SCRATCH_SHADOW_KEYS.clear();
+            SCRATCH_SHADOW_VALS.clear();
+            for (Map.Entry<TextView, Node> e : SHADOWED.entrySet()) {
+                SCRATCH_SHADOW_KEYS.add(e.getKey());
+                SCRATCH_SHADOW_VALS.add(e.getValue());
+            }
+            SHADOWED.clear();
+            for (int i = 0; i < SCRATCH_SHADOW_KEYS.size(); i++) {
+                TextView tv = SCRATCH_SHADOW_KEYS.get(i);
+                Node n = SCRATCH_SHADOW_VALS.get(i);
                 if (tv == null || n == null) continue;
-                float d = DENSITY;
                 if (n.hasShadow) {
                     tv.setShadowLayer(n.baseRadius, n.baseDx, n.baseDy,
                             n.baseShadowColor);
@@ -1472,13 +1495,15 @@ public final class GlitchText {
                     tv.setShadowLayer(0f, 0f, 0f, 0);
                 }
             }
+            SCRATCH_SHADOW_KEYS.clear();
+            SCRATCH_SHADOW_VALS.clear();
         }
     }
 
     /** Buang entri mati (GC) dari registry; dipanggil tiap start/tick. */
     private static void purge() {
-        for (Iterator<Node> it = NODES.iterator(); it.hasNext();) {
-            if (it.next().ref.get() == null) it.remove();
+        for (int i = NODES.size() - 1; i >= 0; i--) {
+            if (NODES.get(i).ref.get() == null) NODES.remove(i);
         }
     }
 
@@ -1523,6 +1548,7 @@ public final class GlitchText {
      */
     private static final class GlitchWatcher implements TextWatcher {
         private final Node node;
+        private Runnable pendingRunnable;
 
         GlitchWatcher(Node node) { this.node = node; }
 
@@ -1533,38 +1559,45 @@ public final class GlitchText {
                 CharSequence s, int start, int before, int count) {
             if (sApplying || !isGlitchEnabled()) return;
             final int st = start, bf = before, ct = count;
+            if (pendingRunnable != null) {
+                H.removeCallbacks(pendingRunnable);
+            }
             // Post ringan: biarkan layout selesai dulu baru glitch.
-            H.postDelayed(() -> {
-                if (sApplying || !isGlitchEnabled()) return;
-                TextView tv = node.ref.get();
-                if (tv == null) return;
-                boolean deletion = ct == 0 && bf > 0;
-                if (node.input) {
-                    // Ketik/hapus = korupsi region pada EditText ITU saja.
-                    inputCorrupt(tv, st, ct, bf);
+            pendingRunnable = new Runnable() {
+                @Override public void run() {
+                    pendingRunnable = null;
+                    if (sApplying || !isGlitchEnabled()) return;
+                    TextView tv = node.ref.get();
+                    if (tv == null) return;
+                    boolean deletion = ct == 0 && bf > 0;
+                    if (node.input) {
+                        // Ketik/hapus = korupsi region pada EditText ITU saja.
+                        inputCorrupt(tv, st, ct, bf);
+                        markEvent();
+                        return;
+                    }
+                    // Throttle: teks yang sama-sering tidak menumpuk burst.
+                    long now = SystemClock.uptimeMillis();
+                    if (now - node.lastBurst < 300) return;
+                    if (!bucketTake()) return;
+                    node.lastBurst = now;
+                    int level = ct > 3 ? MEDIUM : MINOR;
+                    if (ct > 0) {
+                        burst(node, level, st, st + ct);
+                    } else if (deletion) {
+                        // Seam di sekitar posisi hapus: terasa terkorosi.
+                        int from = Math.max(0, st - 1);
+                        int len = tv.length();
+                        burst(node, MINOR, from,
+                                Math.min(len, st + 1));
+                    } else {
+                        burst(node, MINOR);
+                    }
                     markEvent();
-                    return;
+                    scheduleRestore(restoreFor(level));
                 }
-                // Throttle: teks yang sama-sering tidak menumpuk burst.
-                long now = SystemClock.uptimeMillis();
-                if (now - node.lastBurst < 300) return;
-                if (!bucketTake()) return;
-                node.lastBurst = now;
-                int level = ct > 3 ? MEDIUM : MINOR;
-                if (ct > 0) {
-                    burst(node, level, st, st + ct);
-                } else if (deletion) {
-                    // Seam di sekitar posisi hapus: terasa terkorosi.
-                    int from = Math.max(0, st - 1);
-                    int len = tv.length();
-                    burst(node, MINOR, from,
-                            Math.min(len, st + 1));
-                } else {
-                    burst(node, MINOR);
-                }
-                markEvent();
-                scheduleRestore(restoreFor(level));
-            }, 20);
+            };
+            H.postDelayed(pendingRunnable, 20);
         }
 
         @Override public void afterTextChanged(
