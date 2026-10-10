@@ -4,6 +4,346 @@ Semua perubahan penting pada proyek ini didokumentasikan di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id/1.1.0/);
 versi = fase kerja yang dilacak dari git log (cy1–cy10.x), terbaru di atas.
 
+## [cy10.12] — 2026-10-09 (branch fix/pill-center)
+
+### Fixed (navbar pill — audit total keterpusatan)
+- **AKAR "pill ke kanan" ditemukan & ditutup (pra-ada sejak cy10.4)**:
+  `indicatorTargetX` menghitung posisi X ABSOLUT (termasuk paddingLeft
+  bar) tapi dipakai sebagai TRANSLATIONX di atas posisi layout indikator
+  yang sudah beristirahat di paddingLeft → kapsul indikator tergeser
+  permanen +6dp ke kanan dari item yang dibingkainya (16px @420dpi).
+  Fix: `target = pusatX(item) − indW/2 − indicator.getLeft()` — kini
+  terukur flush persis dengan bounds item (deviasi 0px ± pembulatan).
+- **Hack kompensasi cy10.7 DIHAPUS** (row.setPadding extraLeft/
+  extraRight — dilarang aturan audit B): menggeser blok tab ke kanan
+  extraLeft/2 px (terukur 1..7px), salah arah di RTL, melebarkan pill
+  tanpa isi. Fix akar asimetri inset tepi: **lebar item = isi item itu
+  sendiri + 2×padSide, min 48dp** → inset tepi konten kiri == kanan
+  PERSIS (asym 0px terukur di 7 density), blok tab terpusat di capsule.
+- **Indikator selebar item terpilih (cap 64dp M3)** — kapsul tidak lagi
+  menjorok menimpa item sempit (48dp); lebar dibaca dari LayoutParams
+  supaya target geser dihitung dengan geometri final (bukan getWidth()
+  basi pra-layout).
+- **Container pill hampir opaque**: bg_nav_pill kini
+  `?attr/colorSurfaceContainer` (token tema M3) + alpha 96% — teks
+  konten di belakang pill tidak lagi menembus label; area di luar pill
+  tetap transparan penuh.
+
+### Added (tes)
+- **PillCenterTest (Robolectric, native graphics — font metric Roboto
+  asli)**: inflasi R.layout.activity_main utuh, 7 density × semua tab ×
+  portrait/landscape; GAGAL bila pill tidak center. Invarian: margin
+  kiri==kanan (±1px), pusat pill==pusat window (±1px), row tanpa
+  padding pengimbang (regresi hack), inset tepi konten simetris (±1px),
+  indikator terpusat di item (±1px) & tidak melebihi lebar item, jangkar
+  vertikal = pusat ikon (±1px), item ≥48dp, token colorSurfaceContainer
+  resolvable + alpha container 0xF5. Tes instrumented on-device BELUM
+  dijalankan (butuh emulator/perangkat — lihat checklist C.8).
+
+## [cy10.11] — 2026-10-09
+
+### Added (tes)
+- **Tes JUnit pada kode Java sebenarnya — simulasi Python
+  dipensiunkan**: seluruh logika verdict Mode IP per-app diekstrak ke
+  kelas murni `IpModeVerdict` (tanpa dependensi Android); VpnEngine
+  mendelegasikan semua verdict (modeCode, synAction, verdictAction,
+  udpVerdict, dnsPolicy, uidVerdictMode/Label, effFamilyV6,
+  isV4EmbeddedV6) dan jalur paket handleUdp/handleUdp6/forwardDns/
+  cutConflictingFlows memanggil fungsi yang sama. 43 tes
+  (IpModeVerdictTest 37 + FailClosedSideEffectsTest 6), 0 gagal,
+  `./gradlew testDebugUnitTest`: BLOCK v4/v6 TCP/UDP/DNS, mode paksa
+  + guard dual, IPv4-mapped & NAT64 (+6to4/Teredo dipertegas sbg
+  batas), pemilik tak dikenal, UDP/QUIC, DNS kill/prefer, shared-UID
+  deterministik, invarian UDP==TCP utk pemilik dikenal.
+- **Dampak samping fail-closed DIBUKTIKAN TES** (bukan teori): app
+  lain yang atribusinya berhasil TIDAK tersentuh; paket family-diblok
+  yang pemiliknya gagal diatribusikan (race conntrack / exception
+  binder / UID sistem tanpa paket) DIBUANG walau kemungkinan milik
+  app lain — harga kebijakan fail-closed cy10.10, dampak terbatas
+  ke family yang diblok, tanpa BLOCK tidak menyala. minSdk 34 ≥ 29 →
+  tidak ada cabang API-tua.
+- **Celah mode proxy murni terdokumentasi (G12) + usulan perbaikan
+  (BELUM diterapkan)**: SOCKS5 127.0.0.1:1080 milik engine Go tidak
+  melewati TUN → BLOCK/mode per-app tidak berlaku; IP literal IPv4
+  lewat proxy BERHASIL utk app yang seharusnya di-BLOCK. Usulan:
+  relay Java di 1080 (atribusi UID conntrack + verdict IpModeVerdict
+  + forward ke unix socket engine, tolak = SOCKS5 reply 0x02).
+
+### Fixed (build)
+- **Build + lint pertama kali benar-benar dijalankan** (laporan cy10.10
+  tidak menyertakan build — sandbox sebelumnya tanpa Android SDK).
+  `assembleDebug` lolos sejak commit 1c92b6b (kode cy10.10 utuh, tidak
+  ada sisa typo — semua hunk di-review ulang manual); `lintDebug`
+  menemukan 3 error, semuanya diperbaiki dari akar:
+  - `WrongViewCast` di `MainActivity:290/:2940` — Java me-cast
+    `findViewById` ke `MaterialButton` sementara XML masih tag `<Button>`
+    (kebetulan di-inflate `MaterialButton` oleh tema M3). Fix: tag XML
+    `btnEngine`/`vpnToggleBtn` diganti kelas eksplisit
+    `com.google.android.material.button.MaterialButton` (identik saat
+    runtime, tipe jelas).
+  - `QueryAllPackagesPermission` di `AndroidManifest` — izin memang
+    dibutuhkan nyata (`getInstalledApplications(0)` untuk daftar app
+    user+sistem di mode IP per-app; distribusi sideload non-Play).
+    Fix: `tools:ignore` + justifikasi terdokumentasi di manifest.
+
+## [cy10.10] — 2026-10-09
+
+### Security / Changed
+- **BLOCK v4/v6 kini FAIL-CLOSED** (pembalikan kebijakan G7, permintaan
+  eksplisit): bila pemilik koneksi tidak dapat ditentukan (lookup
+  conntrack gagal / error binder / UID tanpa paket) ATAU terjadi error,
+  paket family yang sedang diblok DIBUANG — bukan dilewatkan. SYN →
+  RST (`verdictAction`), UDP → ICMP unreach, query DNS versi diblok →
+  NODATA. Drop tampil sebagai "(unknown)" di ringkasan BLOCK[30s].
+  Kunci: `blockV4Active`/`blockV6Active` (volatile, live-swap).
+- **Celah embedded-v4 ditutup**: tujuan IPv6 dengan alamat IPv4
+  ter-embed — `::ffff:0:0/96` (IPv4-mapped) dan `64:ff9b::/96`
+  (NAT64/464XLAT) — kini dihitung family v4 untuk verdict BLOCK/paksa
+  (`isV4EmbeddedV6`/`effFamilyV6`, dipakai TCP/UDP/cut). Sebelumnya
+  app BLOCK v4 bisa mencapai IPv4 lewat socket AF_INET6. IP literal,
+  UDP (termasuk QUIC), dan app dengan DNS sendiri (DoH) kini tertutup
+  penuh di data plane.
+
+### Changed
+- **Mode paksa v4/v6 per-app kini menyaring UDP + DNS** saat global
+  Dual-stack (dulu hanya TCP SYN): UDP family lawan di-drop diam,
+  query DNS family lawan dijawab NODATA — label "hanya via IPv6/v4"
+  kini sepenuhnya benar; guard tetap: hanya saat global dual, jalur
+  app tanpa mode tak tersentuh.
+- **Live apply kini memutus koneksi lama berdasarkan PEMILIK yang
+  di-CACHE saat aliran di-admit** (`TcpConn.owner`/`UdpFlow.owner`) —
+  tanpa lookup conntrack baru: atribusi tidak bisa kedaluwarsa (G11
+  tertutup), app yang di-admit "tanpa mode" lalu di-BLOCK tetap
+  terpotong, dan flow pemilik-tak-dikenal diputus fail-closed bila
+  family-nya kini diblok. Shared-UID kini deterministik (BLOCK menang
+  atas mode paksa — dulu paket pertama yang punya mode menang).
+
+### Fixed (UI)
+- **Opsi yang tidak berlaku kini DINONAKTIFKAN + keterangan, bukan
+  diabaikan diam-diam**: baris IPv4/IPv6 di popup mode per-app redup +
+  desc "— nonaktif: global non-dual" saat global non-dual; app yang
+  di-bypass split tunnel → semua baris nonaktif + catatan "di luar
+  tunnel"; item BYPASS di dropdown massal tak bisa dipilih (adapter
+  `isEnabled`); ubah mode global saat VPN jalan → HUD "berlaku saat
+  VPN dinyalakan ulang" + dampak N mode per-app.
+- **Label "BYPASS" diperjelas dengan efek nyata**: dropdown global
+  "IPv6 saja (IPv4 keluar tunnel)"; bulk "BYPASS v4 — tolak IPv4 di
+  tunnel"; legenda tiap baris menyatakan efek persis (dibuang di
+  tunnel vs keluar VPN) + baris pembeda dua makna "bypass" + baris
+  fail-closed.
+- **Warna legenda dibedakan**: BLOCK v4 = status_amber (acid #D4FF3F),
+  BLOCK v6 = status_red — coral vs red sebelumnya terlalu mirip pada
+  titik 11px; chip + dot + legenda seragam (tetap token palet, tanpa
+  hue baru).
+
+### Docs
+- KNOWN_ISSUES §10 baru: jawaban audit 5 pertanyaan (file:baris) +
+  tabel G7/G11 ditandai TERTUTUP + checklist device C.6 (8-11).
+- Audit ringkas: BLOCK diterapkan di data plane TUN (TCP RST :1812/:1870,
+  UDP unreach :1136/:1185, DNS NODATA :1240) — bukan di proxy, bukan
+  hanya DNS; atribusi via getConnectionOwnerUid :290/:1757; "BYPASS"
+  global = keluar tunnel (route :465-475), per-app = dibuang di tunnel
+  (:365); live apply = paket baru seketika + koneksi lama diputus
+  (:679/:734).
+
+## [cy10.9] — 2026-10-09
+
+### Fixed
+- **Navbar pill: indikator aktif "agak miring"** — tiga akar sekaligus
+  (semuanya vertikal/horizontal presisi, tanpa mengubah kontrak cy10.4:
+  tanpa elevation/layer/bitmap, indikator tetap SATU view translationX/Y):
+  1. **Salah jangkar vertikal (cy10.7 regresi)**: rumus cy10.7 memusatkan
+     indikator ke pusat BLOK ikon+label (= pusat item) — padahal ikon ada
+     di atas blok, sehingga capsule 32dp tertarik ±8dp lebih rendah dari
+     ikon: tepi atasnya memotong bagian atas ikon & tepi bawahnya memotong
+     label → tampak melorot/miring. Kini dipusatkan pada **pusat IKON**
+     dari posisi layout NYATA (rantai row→item→col→ikon, tanpa asumsi
+     padding/font — imun clamp ITEM_MIN & pembulatan; menutup sekaligus
+     akar lama "pill sedikit lebih rendah" yang dulu dijawab asumsi
+     padTop+ikon/2). Bahasa visual M3 asli: ikon 20dp masuk penuh dalam
+     capsule (ruang 6dp atas/bawah), label di bawah di luar capsule.
+  2. **Bias 1px konten (slack ganjil)**: Gravity.CENTER FrameLayout
+     membagi slack vertikal dengan integer division; slack ganjil (density
+     2.5/1.5 dst.) menaruh blok ikon+label 1px lebih tinggi dari pusat —
+     jarak ikon-tepi-atas-pill ≠ label-tepi-bawah-pill. itemH kini
+     dipaksa slack GENAP (+1px bila perlu, tak terlihat).
+  3. **Tepi sub-piksel**: translationX/Y target dibulatkan ke piksel
+     penuh (Math.round) — offset sub-piksel membuat tepi capsule
+     ter-antialias tak sama kuat atas/bawah/kiri/kanan, terbaca "miring";
+     deviasi ≤0.5px dari pusat tak terlihat.
+- **GlitchText.glitchJitter: drift permanen saat rantai tumpang tindih**
+  (terlihat di navbar sebagai ikon+label bergeser dari slotnya sedangkan
+  indikator tetap → "miring" setelah tap cepat / pindah tab beruntun <
+  ~150ms): rantai kedua menangkap translationX MID-FLIGHT sebagai
+  "posisi awal" dan pemulihannya menetapkan offset basi selamanya. Kini
+  baseline translationX disimpan di registry `JBASE` saat rantai pertama
+  dimulai dan dipakai ulang seluruh rantai berikutnya pada view yang sama;
+  dipulihkan & dibersihkan oleh langkah akhir / `cancelFor` / `stop`.
+  API beku (cy7/cy8) tidak berubah — perbaikan internal murni; visual
+  efek identik (amplitudo/timing/urutan langkah sama).
+
+## [cy10.8] — 2026-10-09
+
+### Added
+- **Dropdown aksi massal "Terapkan ke semua aplikasi"** di dialog Mode IP
+  per aplikasi (di atas search bar / list; SATU kontrol tambahan, tanpa
+  tombol bulk lain; dropdown Mode IP global TIDAK disentuh):
+  - Isi: placeholder aksi + GLOBAL / BYPASS v4 / BYPASS v6 / BLOCK v4 /
+    BLOCK v6. Nama BYPASS mengikuti konvensi dropdown global ("IPv6 saja
+    (bypass IPv4)"): **BYPASS v4 → mode IPv6** (v4 dilewati, app hanya
+    via IPv6), **BYPASS v6 → mode IPv4**; GLOBAL menghapus semua key
+    per-app (kembali ikut global). Desc singkat per item + nama ganda di
+    legenda ("IPv6 / BYPASS v4") menjembatani penamaan dgn label chip.
+  - Pilih = terapkan ke SEMUA aplikasi dalam SATU edit prefs, label/state
+    tiap row ter-update seketika (chip row terlihat diset langsung +
+    rebind list), glitch hanya pada chip yang berubah (MEDIUM, level
+    sama dgn pick per-app), counter Setelan ikut, selection kembali ke
+    placeholder (menu AKSI, bukan state yang bisa basi).
+- **Live apply tanpa restart VPN** (per-app maupun massal; alur
+  "tap → update config → apply ke sesi/TUN aktif"):
+  - `VpnEngine.applyAppIpModes()`: tukar map mode (volatile) + kosongkan
+    cache verdict SEKETIKA → semua paket baru (SYN TCP / UDP / DNS)
+    langsung memakai verdict baru; bagian berat (binder conntrack per
+    flow) dijalankan di background thread (UI tidak pernah diblok).
+  - **Koneksi lama yang bertentangan diputus aman**: TCP → RST dari
+    "tujuan" dgn seq/ack benar utk state kini (SYN-SENT: ack=ISS+1;
+    ESTABLISHED: seq=snd.nxt — syarat penerimaan RST RFC 9293) → app
+    dapat ECONNRESET lalu fallback/reconnect; UDP → flow ditutup +
+    ICMP/ICMPv6 unreachable dgn kutipan header IP+UDP SINTETIS dari
+    4-tuple flow (socket app mendapat EHOSTUNREACH). Verdict pemotongan
+    = fungsi verdict jalur paket yang sama; flow app lain tak tersentuh
+    (anti "bypass yang tidak disengaja": justru koneksi tua pelanggar
+    yang ditutup).
+  - Hasil dilaporkan: HUD "diterapkan ke sesi aktif" / counter / logView
+    (`BLOCK/live: aturan per-app diperbarui (N app; …)[; X koneksi lama
+    diputus]`); petunjuk reconnect lama DIHAPUS (tidak lagi relevan).
+  - **LIVE_PARTIAL** (dilaporkan jujur, G10): bila mode BLOCK baru
+    menargetkan versi IP yang belum ditangkap route TUN sesi ini (global
+    non-dual tanpa upgrade start), verdict diterapkan tapi paket versi
+    itu tidak pernah masuk TUN → HUD meminta restart utk penegakan
+    penuh (route VpnService tidak bisa diubah setelah establish;
+    re-establish in-place ditolak karena membuka jendela gap = bocor).
+
+### Changed
+- **Split tunnel tidak ambigu**: saat mode "Semua aplikasi", tombol
+  "Pilih aplikasi..." DISABLED + alpha redup + teks counter "Semua
+  aplikasi lewat VPN" (bukan jumlah pilihan yang tidak dipakai); mode
+  "Hanya/Kecuali yang dipilih" mengaktifkan kembali tombol + counter
+  jumlah app. Tombol tidak disembunyikan (tanpa layout shift);
+  `glitchStateChange` sebelum `setEnabled` (pola updateAddBtn).
+- Legenda Mode IP: baris prioritas kini "…Saat VPN aktif, perubahan
+  langsung diterapkan." + baris baru batas mode lembut ("IPv4/IPv6
+  (BYPASS) hanya aktif saat Mode IP global Dual-stack; BLOCK aktif di
+  semua mode global."). Hint Setelan yang basi ("Hanya berlaku saat
+  Mode IP global = Dual-stack.") diganti teks akurat (BLOCK + live).
+- Prioritas aturan tetap **per-app > global** (perilaku cy10.7,
+  tertulis di legenda; tidak ada perubahan verdict).
+
+### Verifikasi
+- Harness wire-format diperluas 40 → **53 assertion** (kutipan sintetis
+  IP+UDP v4/v6: layout, arah, 4-tuple, pembungkusan ICMP) — menangkap
+  satu bug nyata (byte versi IPv6 kutipan tidak terisi) SEBELUM build
+  dirilis; SEMUA LULUS. Build debug (20MB) + release/R8 (6.2MB) lolos;
+  simbol (debug) & string konstanta (debug+release) terverifikasi di
+  dex. Celah baru yang tidak bisa ditutup dari VpnService didokumentasi
+  (KNOWN_ISSUES §8 G10/G11) — TIDAK diklaim bebas bocor; validasi nyata
+  menunggu checklist device C-tambahan no.6–7.
+
+## [cy10.7] — 2026-10-09
+
+### Added
+- **BLOCK v4 / BLOCK v6 — mode IP per aplikasi** (dropdown Mode IP global
+  TIDAK disentuh; hanya popup dialog "Mode IP per aplikasi"):
+  - Popup 1-tap kini 5 baris: GLOBAL / IPv4 / IPv6 / **BLOCK v4** /
+    **BLOCK v6**, label jelas, warna baru keluarga merah/oranye
+    (BLOCK v4 = status_coral, BLOCK v6 = status_red; wash 15% seperti
+    chip lain) + legenda di bawah search bar diperluas (arti kedua mode,
+    baris prioritas "per-app menang atas global", catatan berlaku saat
+    VPN dinyalakan ulang; HUD petunjuk reconnect muncul bila mengubah
+    mode saat VPN jalan).
+  - Arti: BLOCK v4 = app itu tidak boleh punya koneksi IPv4 sama sekali
+    (hanya v6); BLOCK v6 kebalikannya. BUKAN bypass: tidak ada paket
+    versi yang diblok keluar lewat jaringan asli atas nama app itu.
+  - Penegakan di TUN (data plane Java VpnEngine, tanpa menyentuh engine
+    Go): TCP versi diblok dijawab **RST** seketika (fallback instan,
+    bukan timeout); UDP non-DNS di-drop + **ICMP host-unreachable (v4
+    type 3 code 1) / ICMPv6 no-route (v6 type 1 code 0)** dengan kutipan
+    paket asli; **auto dual-capture** — bila ada app BLOCK dan global
+    bukan dual, versi yang diblok ikut ditangkap ke TUN (dilaporka di
+    log start; konsekuensinya versi "bypass" app lain kini lewat tunnel).
+  - **DNS (req 2c)**: query A (BLOCK v4) / AAAA (BLOCK v6) dijawab lokal
+    **NOERROR + answer kosong (NODATA) — bukan NXDOMAIN**; versi yang
+    diizinkan diteruskan, upstream-nya diarahkan menghindari versi yang
+    diblok via tabel counterpart resolver yang sama (plain + DoT literal).
+  - Atribusi per-app: `getConnectionOwnerUid` (TCP/UDP) + cache verdict
+    per 4-tuple seumur sesi (SYN retransmit & query DNS berikutnya tak
+    mengulang binder call); fail-open bila uid tak dikenal.
+  - **Log ringkas (req g)**: jumlah paket di-drop + jawaban DNS NODATA
+    diringkas per interval 30 dtk per app ke logView (bebas glitch),
+    bukan per paket; ringkasan parsial terakhir saat VPN berhenti.
+  - Verifikasi statis: harness Java murni 40 assertion wire-format
+    (parser qname/qtype + fail-open, header NODATA, ICMP 3/1 & 1/0 arah/
+    kutipan/cap, checksum IP/ICMP/pseudo-v6/RST) — SEMUA LULUS. Build
+    debug + release/R8 lolos; simbol & string BLOCK terverifikasi di dex.
+  - Audit kebocoran (req d) dilaporkan jujur di docs/KNOWN_ISSUES.md §8
+    (G1–G9): split-tunnel bypass, ICMP tak teratribusi, DoH bawaan app,
+    family upstream DoH/DoQ, resolver tanpa counterpart, jendela VPN
+    mati, fail-open, konsekuensi dual-capture. TIDAK diklaim bebas bocor.
+
+### Fixed
+- **Navbar pill (cy10.7)**: indikator aktif kini dipusatkan vertikal
+  terhadap BLOK ikon+label dihitung dari ukuran nyata hasil layout
+  (row.getTop + item center; rumus lama memusatkan ke ikon dengan offset
+  padTop+ikon/2 yang bisa meleset saat ITEM_MIN clamp/pembulatan) —
+  hilangkan "pill sedikit lebih rendah". Asimetri pill luar (kiri lebih
+  rapat) dihilangkan dengan kompensasi padding row dari lebar terukur
+  label item tepi ("Beranda" vs "Setelan" proporsional) → inset kiri =
+  inset kanan; item tetap seragam, indikator/sentuhan/glitch tak berubah.
+- Popup mode IP: cap ukur tinggi kini mengikuti jumlah baris (5×48dp,
+  bukan 200dp utk 3 baris) — posisi "di atas chip" tidak salah hitung.
+
+## [cy10.6] — 2026-10-08
+
+### Changed
+- **Optimasi mekanisme rendering UI — visual 100% identik** (audit
+  menyeluruh onDraw/Canvas/Paint/Bitmap/Shader/Path/invalidate/
+  requestLayout/Choreographer/frame callback/animasi/overlay/alokasi;
+  akar diverifikasi ke source AOSP; lihat docs/ARCHITECTURE.md §8):
+  - **Background = nol kerja UI**: flag `resumed` (onPause/onResume) —
+    thread monitor tetap mengambil data tiap 2 dtk (kontinuitas baseline
+    rate & timeline grafik tidak berubah) tetapi berhenti men-dispatch
+    `updateHeader` + seluruh blok UI dashboard (setText/layout/chips/
+    invalidate pada view yang tidak tergambar = kerja sia-sia).
+    Kontinuitas data grafik dijaga lewat `TrafficGraphView.insert()`
+    (sisip data tanpa invalidate).
+  - **Tint chip sesi hanya saat warna berubah**: `VectorDrawable
+    .setTintList` membandingkan identitas objek & `Drawable.setTint(int)`
+    selalu alokasi `ColorStateList` baru (AOSP 14: VectorDrawable:484,
+    GradientDrawable:1229) → dulu `invalidateSelf()` + alokasi CSL +
+    color-filter PER CHIP PER TICK walau warna sama; kini di-guard int
+    (`ChipVh.lastTint`).
+  - **`findViewById` chip sekali seumur chip** (holder `ChipVh`), bukan
+    3× per chip per tick 2 dtk (hingga 60 traversal hierarki/tick).
+  - **Grafik trafik datar tidak digambar ulang**: `addSample` melewatkan
+    `postInvalidate` bila buffer penuh + seluruh sampel homogen + nilai
+    baru = terakhir (output piksel identik; verifikasi homogenitas
+    O(CAP) hanya saat kandidat skip).
+  - **TICK ambient tanpa alokasi**: scratch list statis menggantikan
+    2 `ArrayList` baru per tick (950–1500ms selamanya).
+- Diverifikasi-optimal (tidak diubah): `VectorDrawable.setAlpha` no-op
+  bila nilai sama (denyut dot hanya redraw saat alpha kuantisasi berubah),
+  `TextView.setTextColor`/`View.setAlpha` no-op bila nilai sama, tidak
+  ada `setLayerType`/hardware layer/animated drawable, scanline bitmap
+  sudah sekali-alokasi (cy10.2). Glitch: frekuensi/intensitas/timing/
+  warna/posisi/ukuran TIDAK disentuh; ambient & event tetap seperti
+  cy8–cy10.3.
+
+### Pending (perlu konfirmasi user — docs/KNOWN_ISSUES.md §B K8/K9)
+- K8: guard `setTextIfChanged` utk `vpnStatsView`/`headerStats`/teks chip
+  sesi (menghentikan kilat saat nilai statis = perubahan frekuensi visual).
+- K9: lewati `fetchStatus`+parse JSON saat background (biaya: satu nilai
+  rate rata-rata pada tick pertama pasca-resume).
+
 ## [cy10.5] — 2026-10-08
 
 ### Fixed

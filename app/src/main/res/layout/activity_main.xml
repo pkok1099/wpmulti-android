@@ -112,7 +112,12 @@
                             app:indicatorColor="?attr/colorOnPrimaryContainer"
                             app:indicatorSize="24dp" />
 
-                        <Button android:id="@+id/btnEngine"
+                        <!-- Kelas eksplisit MaterialButton: Java me-cast
+                             findViewById ke MaterialButton (morphEngineButton).
+                             Tag <Button> lama hanya kebetulan di-inflate
+                             MaterialButton oleh tema M3 (MaterialComponentsViewInflater)
+                             - WrongViewCast lint. -->
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btnEngine"
                             style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"
                             android:layout_height="56dp"
@@ -178,7 +183,7 @@
                             android:textSize="13sp"
                             android:visibility="gone" />
 
-                        <Button android:id="@+id/vpnToggleBtn"
+                        <com.google.android.material.button.MaterialButton android:id="@+id/vpnToggleBtn"
                             style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -743,7 +748,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="Hanya berlaku saat Mode IP global = Dual-stack."
+                            android:text="IPv4/IPv6 per-app hanya berlaku saat Mode IP global Dual-stack; BLOCK berlaku di semua mode global. Saat VPN aktif, perubahan langsung diterapkan."
                             android:textSize="12sp" />
 
                         <TextView
@@ -925,11 +930,14 @@
          elevation selalu 0; indikator aktif = SATU view terpisah yang
          bergeser (translationX); glitch hanya per-item yang berubah
          (API GlitchText beku, tanpa layer/bitmap/alpha container).
-         COMPACT: lebar item = label terlebar + padding 14dp (seragam,
-         pill mengikuti ISI ~250dp, bukan layar); tinggi item dari
-         icon+gap+font+padding (~52dp, label tidak terpotong); area
-         sentuh tiap item >= 48dp; pill ~62dp (dari 64dp). Konten
-         halaman tetap lewat DI BELAKANG pill (translucent 90%). -->
+         COMPACT cy10.11-B: lebar item = ISI item itu sendiri + padding
+         20dp (min 48dp; bukan lagi seragam label-terlebar - inset tepi
+         kiri/kanan konten = padSide PERSIS simetris, blok tab terpusat
+         di capsule, tanpa padding pengimbang), pill mengikuti ISI;
+         tinggi item dari icon+gap+font+padding (~52dp, label tidak
+         terpotong); indikator selebar item terpilih (cap 64dp M3).
+         Konten halaman tetap lewat DI BELAKANG pill - container kini
+         HAMPIR OPAQUE (?attr/colorSurfaceContainer 96%, cy10.11-B). -->
     <com.wpmulti.test.CyberNavBar
         android:id="@+id/navPill"
         android:layout_width="wrap_content"

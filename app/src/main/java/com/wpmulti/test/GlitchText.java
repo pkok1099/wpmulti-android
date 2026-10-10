@@ -190,6 +190,13 @@ public final class GlitchText {
     }
 
     private static final ArrayList<Node> NODES = new ArrayList<>();
+    // cy10.6: scratch list TICK ambient — tick berjalan tiap 950-1500ms
+    // selamanya di foreground; alokasi 2 ArrayList per tick hanya menjadi
+    // beban GC berulang. Dipakai ulang (clear + isi; thread utama saja,
+    // tidak reentrer — burst() tidak memanggil TICK). Urutan isi dan hasil
+    // pick IDENTIK (iterasi NODES yang sama).
+    private static final ArrayList<Node> SCRATCH_ALIVE = new ArrayList<>();
+    private static final ArrayList<Node> SCRATCH_HOT = new ArrayList<>();
     /** TextView yang sedang kilat span -> teks dasar utk restore. */
     private static final IdentityHashMap<TextView, CharSequence> PENDING =
             new IdentityHashMap<>();
@@ -232,6 +239,14 @@ public final class GlitchText {
      *  {alpha, translationX, scaleX, ELEVATION} - elevation ikut
      *  dipulihkan (guard artifact kotak pada view ber-elevation). */
     private static final WeakHashMap<View, float[]> BASE = new WeakHashMap<>();
+    /** Baseline translationX KHUSUS rantai jitter (cy10.9): rantai yang
+     *  saling tumpang tindih (tekan/pindah tab navbar < ~150ms) dulu
+     *  menangkap posisi MID-FLIGHT sebagai "awal" -> pemulihan menetapkan
+     *  offset basi dan item bergeser permanen (indikator tak lagi
+     *  konsentris dgn ikon). Baseline pertama dipakai ulang seluruh
+     *  rantai pada view yang sama; dihapus saat pemulihan/cancel/stop. */
+    private static final WeakHashMap<View, float[]> JBASE =
+            new WeakHashMap<>();
     /** Langkah tertunda per view (bisa dibatalkan per view). */
     private static final WeakHashMap<View, ArrayList<Runnable>> POSTED =
             new WeakHashMap<>();
@@ -448,6 +463,11 @@ public final class GlitchText {
             v.setTranslationX(b[1]);
             v.setScaleX(b[2]);
             v.setElevation(b[3]);
+        } else {
+            // cy10.9: baseline jitter dipulihkan bila tidak ada baseline
+            // alpha (glitchJitter murni, mis. item navbar).
+            float[] j = JBASE.remove(v);
+            if (j != null) v.setTranslationX(j[0]);
         }
     }
 
@@ -462,7 +482,15 @@ public final class GlitchText {
             v.setScaleX(b[2]);
             v.setElevation(b[3]);
         }
+        // cy10.9: baseline jitter juga dipulihkan (item navbar dll.).
+        for (Map.Entry<View, float[]> e : JBASE.entrySet()) {
+            View v = e.getKey();
+            float[] j = e.getValue();
+            if (v == null || j == null) continue;
+            v.setTranslationX(j[0]);
+        }
         BASE.clear();
+        JBASE.clear();
         POSTED.clear();
     }
 
@@ -571,13 +599,26 @@ public final class GlitchText {
      * menyentuh alpha: aman utk view ber-elevation (pill nav). Rantai
      * deterministik: langkah terakhir SELALU mengembalikan translationX
      * baseline (tidak ada layout shift, tidak ada state nyangkut).
+     * cy10.9: baseline disimpan di registry JBASE saat rantai PERTAMA
+     * dimulai dan dipakai ulang rantai berikutnya pada view yang sama
+     * - rantai tumpang tindih (tekan/pindah tab < ~150ms) tidak lagi
+     * menangkap posisi mid-flight sebagai baseline (akar drift permanen
+     * 1-3px pada item navbar: indikator tampak "agak miring" karena
+     * ikon+label bergeser dari slotnya sedangkan indikator tetap).
      */
     public static void glitchJitter(View v, int level) {
         if (v == null || !isGlitchEnabled()) return;
         markEvent();
         float d = DENSITY;
         float amp = level == MAJOR ? 3.5f : level == MEDIUM ? 2f : 1f;
-        final float ox = v.getTranslationX();
+        final float ox;
+        float[] jBase = JBASE.get(v);
+        if (jBase != null) {
+            ox = jBase[0];          // rantai lain masih jalan: baseline ASLI
+        } else {
+            ox = v.getTranslationX();  // view diam: ini baseline sejati
+            JBASE.put(v, new float[]{ox});
+        }
         float[] seq = {amp, -amp * 0.7f, amp * 0.45f, -amp * 0.2f};
         int n = level == MINOR ? 2 : level == MEDIUM ? 3 : seq.length;
         long t = 0;
@@ -587,10 +628,14 @@ public final class GlitchText {
             step(v, t, () -> v.setTranslationX(ox + off));
         }
         step(v, t + 45, () -> {
-            // pulihkan dari baseline bila ada (lebih tahan terhadap
-            // efek yang saling tumpang tindih), selain itu posisi awal.
+            // pulihkan dari baseline alpha bila ada (lebih tahan terhadap
+            // efek yang saling tumpang tindih), lalu baseline jitter,
+            // selain itu posisi awal rantai ini (sudah = baseline sejati).
             float[] b = BASE.get(v);
-            v.setTranslationX(b != null ? b[1] : ox);
+            float[] j = JBASE.remove(v);
+            if (b != null) v.setTranslationX(b[1]);
+            else if (j != null) v.setTranslationX(j[0]);
+            else v.setTranslationX(ox);
         });
     }
 
@@ -1112,16 +1157,18 @@ public final class GlitchText {
             // bintangnya, ambient hanya atmosfer (1 target / 950-1500ms).
             long now = SystemClock.uptimeMillis();
             if (now - sLastEvent >= AMBIENT_COOLDOWN_MS && isGlitchEnabled()) {
-                ArrayList<Node> alive = new ArrayList<>();
-                ArrayList<Node> aliveHot = new ArrayList<>();
+                // cy10.6: scratch statis (lihat deklarasi) — tanpa alokasi
+                // per tick; isi & statistik pick identik.
+                SCRATCH_ALIVE.clear();
+                SCRATCH_HOT.clear();
                 for (Node n : NODES) {
                     TextView tv = n.ref.get();
                     if (tv == null || n.input) continue;
-                    alive.add(n);
-                    if (n.hot) aliveHot.add(n);
+                    SCRATCH_ALIVE.add(n);
+                    if (n.hot) SCRATCH_HOT.add(n);
                 }
-                if (!alive.isEmpty()) {
-                    Node n = pick(alive, aliveHot);
+                if (!SCRATCH_ALIVE.isEmpty()) {
+                    Node n = pick(SCRATCH_ALIVE, SCRATCH_HOT);
                     if (n != null) burst(n, MINOR);
                 }
             }
